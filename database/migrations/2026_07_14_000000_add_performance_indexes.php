@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('student_enrollment', function (Blueprint $table) {
+            $table->index('status');
+            $table->index('grade_level');
+        });
+
+        Schema::table('users', function (Blueprint $table) {
+            $table->index('role');
+        });
+
+        Schema::table('parents', function (Blueprint $table) {
+            $table->index('role');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('student_enrollment', function (Blueprint $table) {
+            $table->dropIndex(['status']);
+            $table->dropIndex(['grade_level']);
+        });
+
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropIndex(['role']);
+        });
+
+        Schema::table('parents', function (Blueprint $table) {
+            $table->dropIndex(['role']);
+        });
+    }
+};

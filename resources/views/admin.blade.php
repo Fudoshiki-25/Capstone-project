@@ -1,0 +1,2089 @@
+@extends('layout.app')
+@section('content')
+
+
+<?php
+use App\Models\StudentEnrollment;
+use App\Models\Section;
+
+/* ── URL params ── */
+$appId   = request('app_id',  '');
+$modal   = request('modal',   '');
+$stuId   = request('stu_id',  '');
+$stuName = request('stu_name','');
+
+/* ── Real DB data ── */
+$applications = StudentEnrollment::with('user')
+    ->where('status', 'pending')
+    ->orderByDesc('created_at')
+    ->get();
+
+$students = StudentEnrollment::with(['user', 'tuitionPlan.payments'])
+    ->whereIn('status', ['approved', 'enrolled'])
+    ->orderBy('last_name')
+    ->get();
+
+/* ── Stats ── */
+$totalStudents = $students->count();
+$pendingCount  = $applications->count();
+
+/* ──────────────────────────────────────────────────────
+   SECTIONS — real, persisted (see SectionController::generate).
+   AM/PM is a per-student schedule preference only; it does NOT split
+   sections — grouping is by grade_level alone. Ideal size: 15, max: 30
+   (handled server-side when sections are generated).
+────────────────────────────────────────────────────── */
+$sectionsByGrade = Section::withCount('students')
+    ->orderBy('name')
+    ->get()
+    ->groupBy('grade_level');
+
+$unsectionedByGrade = StudentEnrollment::where('status', 'approved')
+    ->whereNull('section_id')
+    ->selectRaw('grade_level, COUNT(*) as total')
+    ->groupBy('grade_level')
+    ->pluck('total', 'grade_level');
+
+/* ── Grade display config ── */
+$gradeConfig = [
+    'Kinder'   => ['id' => 'kinder', 'icon' => 'teal',  'fill' => 'fill-teal',  'color' => '#0f766e', 'bg' => '#ccfbf1'],
+    'Grade 1'  => ['id' => 'g1',     'icon' => 'amber', 'fill' => 'fill-amber', 'color' => '#b45309', 'bg' => '#fef3c7'],
+    'Grade 2'  => ['id' => 'g2',     'icon' => 'rose',  'fill' => 'fill-rose',  'color' => '#be185d', 'bg' => '#fce7f3'],
+    'Grade 3'  => ['id' => 'g3',     'icon' => 'navy',  'fill' => 'fill-navy',  'color' => '#1e3a8a', 'bg' => '#eff6ff'],
+    'Grade 4'  => ['id' => 'g4',     'icon' => 'teal',  'fill' => 'fill-teal',  'color' => '#0f766e', 'bg' => '#ccfbf1'],
+    'Grade 5'  => ['id' => 'g5',     'icon' => 'amber', 'fill' => 'fill-amber', 'color' => '#b45309', 'bg' => '#fef3c7'],
+    'Grade 6'  => ['id' => 'g6',     'icon' => 'rose',  'fill' => 'fill-rose',  'color' => '#be185d', 'bg' => '#fce7f3'],
+    'Grade 7'  => ['id' => 'g7',  'icon' => 'teal',  'fill' => 'fill-teal',  'color' => 'var(--g7-color)',  'bg' => 'var(--g7-light)'],
+    'Grade 8'  => ['id' => 'g8',  'icon' => 'amber', 'fill' => 'fill-amber', 'color' => '#b45309',          'bg' => '#fef3c7'],
+    'Grade 9'  => ['id' => 'g9',  'icon' => 'rose',  'fill' => 'fill-rose',  'color' => '#be185d',          'bg' => '#fce7f3'],
+    'Grade 10' => ['id' => 'g10', 'icon' => 'navy',  'fill' => 'fill-navy',  'color' => 'var(--navy)',      'bg' => 'var(--navy-light)'],
+];
+
+/* ──────────────────────────────────────────────────────
+   LIVE CHART DATA — computed from real enrollment records
+   so the Statistics tab always reflects current students.
+────────────────────────────────────────────────────── */
+
+/* Enrollment by Grade (approved/enrolled students, grouped by grade_level) */
+$gradeCountsRaw   = $students->groupBy('grade_level')->map->count();
+$chartGradeLabels = array_keys($gradeConfig);
+$chartGradeData   = array_map(fn($g) => $gradeCountsRaw[$g] ?? 0, $chartGradeLabels);
+
+/* Gender distribution (approved/enrolled students)
+   NOTE: assumes a `sex` column storing 'Male'/'Female' (or 'M'/'F').
+   If the actual column name differs, update the two lines below. */
+$maleCount   = $students->filter(fn($s) => strtoupper(substr((string) ($s->sex ?? ''), 0, 1)) === 'M')->count();
+$femaleCount = $students->filter(fn($s) => strtoupper(substr((string) ($s->sex ?? ''), 0, 1)) === 'F')->count();
+$genderTotal = max($maleCount + $femaleCount, 1);
+$malePct     = round($maleCount / $genderTotal * 100);
+$femalePct   = round($femaleCount / $genderTotal * 100);
+
+/* Application Status Breakdown — reuses the real counts already computed above */
+$statusApproved = $totalStudents;
+$statusPending  = $pendingCount;
+
+/* Enrollment Growth (cumulative, by month, current school year) — built from
+   real created_at timestamps of approved/enrolled students. Replaces the old
+   hardcoded "last 3 SY" demo chart since there's no stored multi-year archive yet. */
+$trendLabels = [];
+$trendData   = [];
+$running     = 0;
+foreach ($students->sortBy('created_at')->groupBy(fn($s) => $s->created_at->format('Y-m')) as $ym => $grp) {
+    $running    += $grp->count();
+    $trendLabels[] = \Carbon\Carbon::createFromFormat('Y-m', $ym)->format('M Y');
+    $trendData[]    = $running;
+}
+if (empty($trendLabels)) {
+    $trendLabels = ['No enrollments yet'];
+    $trendData   = [0];
+}
+
+/* ── Profile modal data ── */
+$profileEnrollment = null;
+if ($modal === 'profile' && $appId) {
+    $profileEnrollment = StudentEnrollment::with(['user', 'requirements', 'tuitionPlan.payments'])->find($appId);
+}
+?>
+
+
+<style>
+/* ===== FULL SIDEBAR LAYOUT ===== */
+body { margin:0; background:#f1f5f9; }
+
+/* Wrapper */
+.page-wrapper {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── LEFT SIDEBAR ── */
+.left-sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: #1a2744;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  z-index: 200;
+  overflow-y: auto;
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
+}
+.left-sidebar::-webkit-scrollbar { width: 4px; }
+.left-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius:4px; }
+
+/* Brand */
+.sb-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.sb-brand img { width:40px; height:40px; border-radius:10px; }
+.sb-brand-text { line-height: 1.2; }
+.sb-brand-name { font-size:15px; font-weight:800; color:#fff; letter-spacing:.01em; }
+.sb-brand-sub  { font-size:10.5px; color:rgba(255,255,255,.45); }
+
+/* User card */
+.sb-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.sb-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--navy, #1e3a8a);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
+  border: 2px solid rgba(255,255,255,.2);
+  overflow: hidden;
+}
+.sb-avatar img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+.sb-user-name { font-size:13px; font-weight:700; color:#fff; line-height:1.2; }
+.sb-user-role { font-size:10.5px; color:rgba(255,255,255,.45); }
+
+/* Nav section label */
+.sb-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: rgba(255,255,255,.35);
+  padding: 18px 20px 6px;
+}
+
+/* Nav item */
+.sb-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  color: rgba(255,255,255,.65);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  border-left: 3px solid transparent;
+  user-select: none;
+  text-decoration: none;
+}
+.sb-nav-item i { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+.sb-nav-item:hover {
+  background: rgba(255,255,255,.07);
+  color: #fff;
+  text-decoration: none;
+}
+.sb-nav-item.active {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font-weight: 700;
+  border-left-color: #60a5fa;
+}
+.sb-nav-item.active i { color: #60a5fa; }
+
+/* Badge on nav item */
+.sb-badge {
+  margin-left: auto;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 1px 7px;
+  line-height: 1.7;
+}
+
+/* Bottom of sidebar */
+.sb-bottom {
+  margin-top: auto;
+  padding: 12px 12px 16px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.sb-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: rgba(255,255,255,.6);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .15s, color .15s;
+}
+.sb-logout:hover { background: rgba(239,68,68,.18); color: #f87171; text-decoration:none; }
+.sb-logout i { font-size:16px; }
+
+/* ── RIGHT CONTENT AREA ── */
+.main-area {
+  margin-left: 240px;
+  flex: 1;
+  width: calc(100% - 240px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Top bar (right side) */
+.main-topbar {
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #475569;
+  cursor: pointer;
+  padding: 4px;
+}
+.topbar-right { display:flex; align-items:center; gap:10px; }
+.topbar-icon {
+  width:34px; height:34px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; color:#64748b; cursor:pointer;
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  transition: background .15s;
+}
+.topbar-icon:hover { background:#f1f5f9; color:#1e293b; }
+
+/* Page content */
+.admin-content {
+  padding: 28px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Tab panels & their direct cards fill full width */
+#admin-tab-applications,
+#admin-tab-students,
+#admin-tab-sections,
+#admin-tab-statistics {
+  width: 100%;
+}
+
+#admin-tab-applications > .card,
+#admin-tab-students > .card,
+#admin-tab-sections > .card {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Mobile sidebar overlay */
+.sb-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 199;
+}
+
+/* Clickable section row hover */
+.section-row[title] {
+  transition: background .15s, box-shadow .15s;
+}
+.section-row[title]:hover {
+  background: #f0f9ff;
+  box-shadow: 0 0 0 2px #3b82f6 inset;
+  border-radius: 10px;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 991px) {
+  .left-sidebar { transform: translateX(-100%); }
+  .left-sidebar.open { transform: translateX(0); }
+  .sb-overlay.open { display: block; }
+  .main-area { margin-left: 0; width: 100%; }
+  .topbar-toggle { display: flex; align-items:center; justify-content:center; }
+  .admin-content { padding: 18px; }
+}
+@media (max-width: 575px) {
+  .admin-content { padding: 14px; }
+}
+
+/* ── TABLE ROW SIZING ── */
+#appTable thead th,
+#stuTable thead th {
+  padding: 10px 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+#appTable tbody td,
+#stuTable tbody td {
+  padding: 10px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+/* Keep avatar/badge vertically centered and not too large */
+.stu-avatar {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  font-size: 11px !important;
+  margin-right: 8px !important;
+}
+
+/* Compact action button */
+.action-dots-btn {
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+  min-width: 34px;
+  min-height: 34px;
+}
+@media (max-width: 767px) {
+  .action-dots-btn { min-width: 40px; min-height: 40px; padding: 8px 12px !important; }
+}
+
+/* Tighter badge sizing */
+.badge-enrolled,
+.badge-pending,
+.badge-resubmit,
+.badge-approved {
+  font-size: 11px !important;
+  padding: 3px 10px !important;
+  border-radius: 20px !important;
+  white-space: nowrap;
+}
+
+/* ── Modern Profile Photo: clickable avatar ── */
+.pp-avatar-wrap {
+  position: relative; width: 110px; height: 110px; cursor: pointer;
+}
+.pp-avatar-img, .pp-avatar-fallback {
+  width: 110px; height: 110px; border-radius: 50%; object-fit: cover;
+  border: 3px solid var(--border); display: flex; align-items: center; justify-content: center;
+  background: #f1f5f9; color: #94a3b8; font-size: 40px; transition: filter .15s;
+}
+.pp-avatar-overlay {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(26,42,94,.55); color: #fff; font-size: 22px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .18s;
+}
+.pp-avatar-wrap:hover .pp-avatar-overlay,
+.pp-avatar-wrap:focus .pp-avatar-overlay { opacity: 1; }
+.pp-avatar-badge {
+  position: absolute; bottom: 2px; right: 2px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--navy); color: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; border: 3px solid #fff;
+}
+
+/* ── Modern Profile Photo: upload modal ── */
+.pp-modal .modal-content { border-radius: 16px; border: none; }
+.pp-dropzone {
+  border: 2px dashed var(--border); border-radius: 14px;
+  padding: 28px 20px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+  cursor: pointer; transition: border-color .15s, background .15s; text-align: center;
+}
+.pp-dropzone:hover, .pp-dropzone.pp-dragover {
+  border-color: var(--gold); background: var(--gold-light);
+}
+.pp-preview-circle {
+  width: 96px; height: 96px; border-radius: 50%; overflow: hidden;
+  background: #f1f5f9; display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border); flex-shrink: 0;
+}
+.pp-preview-circle img { width: 100%; height: 100%; object-fit: cover; }
+.pp-preview-fallback { color: #94a3b8; font-size: 36px; }
+.pp-dropzone-text { max-width: 280px; }
+</style>
+
+
+<!-- ===== SIDEBAR OVERLAY (mobile) ===== -->
+<div class="sb-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+
+<!-- ===== PAGE WRAPPER ===== -->
+<div class="page-wrapper">
+
+  <!-- ── LEFT SIDEBAR ── -->
+  <aside class="left-sidebar sb-admin" id="leftSidebar">
+    <div class="sb-brand">
+      <img src="{{ asset('photo/logo.png') }}" alt="PHLCI Logo">
+      <div class="sb-brand-text">
+        <div class="sb-brand-name">PHLCI</div>
+        <div class="sb-brand-sub">Admin Dashboard</div>
+      </div>
+    </div>
+
+    <div class="sb-user">
+      <div class="sb-avatar av-navy">
+        @if($user->profile_photo)
+          <img src="{{ asset('storage/' . $user->profile_photo) }}" alt="Profile">
+        @else
+          {{ $initials }}
+        @endif
+      </div>
+      <div>
+        <div class="sb-user-name">{{ $fullName }}</div>
+        <div class="sb-user-role">{{ ucfirst($user->role) }}</div>
+      </div>
+    </div>
+
+    <div class="sb-section-label">Main Menu</div>
+
+ <div class="sb-nav-item active" onclick="switchAdminTab('statistics',this)" data-tab="statistics">
+      <i class="bi bi-bar-chart-fill"></i>
+      <span>Statistics</span>
+    </div>
+
+    <div class="sb-nav-item" onclick="switchAdminTab('applications',this)" data-tab="applications">
+      <i class="bi bi-file-earmark-text"></i>
+      <span>Applications</span>
+      <span class="sb-badge">{{ $pendingCount }}</span>
+    </div>
+    <div class="sb-nav-item" onclick="switchAdminTab('students',this)" data-tab="students">
+      <i class="bi bi-people"></i><span>Students</span>
+    </div>
+    <div class="sb-nav-item" onclick="switchAdminTab('sections',this)" data-tab="sections">
+      <i class="bi bi-layout-text-sidebar-reverse"></i><span>Sections</span>
+    </div>
+    <div class="sb-nav-item" onclick="switchAdminTab('profile',this)" data-tab="profile">
+      <i class="bi bi-person-circle"></i><span>My Profile</span>
+    </div>
+   
+
+    <div class="sb-bottom">
+      <a href="{{ route('logout') }}" class="sb-logout">
+        <i class="bi bi-box-arrow-left"></i><span>Logout</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ── MAIN AREA ── -->
+  <div class="main-area">
+    <div class="main-topbar">
+      <div class="d-flex align-items-center gap-3">
+        <button class="topbar-toggle" onclick="openSidebar()"><i class="bi bi-list"></i></button>
+        <div>
+          <div class="fw-bold" style="font-size:15px;color:#1e293b" id="pageTitle">Applications</div>
+          <div class="text-muted" style="font-size:12px">Manage enrollment, students, and sections</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="brand-logo" style="background:var(--navy);width:34px;height:34px;font-size:13px;overflow:hidden">
+          @if($user->profile_photo)
+            <img src="{{ asset('storage/' . $user->profile_photo) }}" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%">
+          @else
+            {{ $initials }}
+          @endif
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="admin-content">
+
+      <!-- ══════════════════════════════════════
+           TAB: STATISTICS
+      ══════════════════════════════════════ -->
+      <div id="admin-tab-statistics" class="d-none">
+      <!-- STAT CARDS -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+          <div class="card border rounded-3 p-3 h-100 position-relative overflow-hidden">
+            <div class="stat-icon blue"><i class="bi bi-people-fill"></i></div>
+            <div class="fw-bold mb-1" style="font-size:28px;color:#1e293b">{{ $totalStudents }}</div>
+            <div class="text-muted" style="font-size:13px">Total Students</div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card border rounded-3 p-3 h-100 position-relative overflow-hidden">
+            <div class="stat-icon orange"><i class="bi bi-clock-fill"></i></div>
+            <div class="fw-bold mb-1" style="font-size:28px;color:#1e293b">{{ $pendingCount }}</div>
+            <div class="text-muted" style="font-size:13px">Pending Applications</div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card border rounded-3 p-3 h-100 position-relative overflow-hidden">
+            <div class="stat-icon teal"><i class="bi bi-book-fill"></i></div>
+            <div class="fw-bold mb-1" style="font-size:28px;color:#1e293b">
+              {{ $sectionsByGrade->flatten()->count() }}
+            </div>
+            <div class="text-muted" style="font-size:13px">Active Sections</div>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="card border rounded-3 p-3 h-100 position-relative overflow-hidden">
+            <div class="stat-icon green"><i class="bi bi-graph-up-arrow"></i></div>
+            <div class="fw-bold mb-1" style="font-size:28px;color:#1e293b">
+              @php
+                $totalApps = $totalStudents + $pendingCount;
+                $rate = $totalApps > 0 ? round($totalStudents / $totalApps * 100) : 0;
+              @endphp
+              {{ $rate }}%
+            </div>
+            <div class="text-muted" style="font-size:13px">Enrollment Rate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHARTS -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-7">
+          <div class="card border rounded-3 p-3 h-100">
+            <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Enrollment by Grade</div>
+            <div class="text-muted mb-3" style="font-size:13px">Number of students per grade level</div>
+            <div style="position:relative;width:100%;height:220px">
+              <canvas id="barChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="card border rounded-3 p-3 h-100">
+            <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Student Gender Distribution</div>
+            <div class="text-muted mb-3" style="font-size:13px">Male vs Female student ratio</div>
+            <div class="d-flex align-items-center justify-content-center gap-4 h-100 pb-3 flex-column flex-sm-row">
+              <div style="position:relative;width:160px;height:160px;flex-shrink:0">
+                <canvas id="pieChart"></canvas>
+              </div>
+              <div class="d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2" style="font-size:13px"><span class="rounded-circle d-inline-block" style="width:12px;height:12px;background:#1e3a8a"></span> Male: {{ $maleCount }} ({{ $malePct }}%)</div>
+                <div class="d-flex align-items-center gap-2" style="font-size:13px;color:#0d9488"><span class="rounded-circle d-inline-block" style="width:12px;height:12px;background:#0d9488"></span> Female: {{ $femaleCount }} ({{ $femalePct }}%)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- APPLICATION STATUS BREAKDOWN -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="card border rounded-3 p-3 h-100">
+            <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Application Status Breakdown</div>
+            <div class="text-muted mb-3" style="font-size:13px">Current SY application outcomes</div>
+            <div style="position:relative;width:100%;height:200px">
+              <canvas id="appStatusChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card border rounded-3 p-3 h-100">
+            <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Enrollment Growth (This School Year)</div>
+            <div class="text-muted mb-3" style="font-size:13px">Cumulative enrolled students by month</div>
+            <div style="position:relative;width:100%;height:200px">
+              <canvas id="trendChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div><!-- /admin-tab-statistics -->
+
+      <!-- ══════════════════════════════════════
+           TAB: APPLICATIONS
+      ══════════════════════════════════════ -->
+      <div id="admin-tab-applications">
+        <div class="card border rounded-3 p-3 p-md-4">
+          <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-2">
+            <div>
+              <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Recent Applications</div>
+              <div class="text-muted" style="font-size:13px">Review and manage admission applications</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <button class="btn-icon-sm" title="Filter"><i class="bi bi-funnel"></i></button>
+            </div>
+          </div>
+
+          <div class="position-relative mb-3">
+            <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+            <input type="text" class="form-control ps-5" placeholder="Search applications..." oninput="filterTable('appTable',this.value)">
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle" id="appTable">
+              <thead class="table-light">
+                <tr>
+                  @foreach(['#','Name','Grade','Session','Date Applied','Status','Actions'] as $h)
+                  <th style="text-transform:uppercase;letter-spacing:.04em;color:#64748b">{{ $h }}</th>
+                  @endforeach
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($applications as $i => $app)
+                @php
+                  $appFullName = $app->last_name . ', ' . $app->first_name . ($app->middle_name && $app->middle_name !== 'N/A' ? ' ' . substr($app->middle_name,0,1).'.' : '');
+                  $appInitials = strtoupper(substr($app->first_name,0,1) . substr($app->last_name,0,1));
+                @endphp
+                <tr>
+                  <td>{{ $i + 1 }}</td>
+                  <td><span class="stu-avatar av-blue">{{ $appInitials }}</span> {{ $appFullName }}</td>
+                  <td>{{ $app->grade_level }}</td>
+                  <td>
+                    <span class="badge rounded-pill px-2" style="background:{{ $app->preferred_session === 'AM' ? '#dbeafe' : '#fce7f3' }};color:{{ $app->preferred_session === 'AM' ? '#1e40af' : '#be185d' }};font-size:11px">
+                      {{ $app->preferred_session }}
+                    </span>
+                  </td>
+                  <td>{{ $app->created_at->format('M d, Y') }}</td>
+                  <td><span class="badge-pending">Pending</span></td>
+                  <td>
+                    <div class="action-menu-wrap position-relative">
+                      <button class="btn btn-sm btn-light border action-dots-btn" onclick="toggleActionMenu(event,this)">
+                        <i class="bi bi-three-dots-vertical"></i>
+                      </button>
+                      <div class="action-dropdown shadow-sm">
+                        <a class="action-item" href="?modal=profile&app_id={{ $app->id }}">
+                          <i class="bi bi-eye text-navy"></i> View Profile
+                        </a>
+                        <button type="button" class="action-item text-success" onclick="closeMenuThen(()=>approveApplication({{ $app->id }}, '{{ addslashes($appFullName) }}'))">
+                          <i class="bi bi-check-circle"></i> Approve
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                @empty
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size:32px"></i>
+                    <div class="mt-2">No pending applications</div>
+                  </td>
+                </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-3 text-muted" style="font-size:13px">Total: {{ $applications->count() }} pending application(s)</div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           TAB: STUDENTS
+      ══════════════════════════════════════ -->
+      <div id="admin-tab-students" class="d-none">
+        <div class="card border rounded-3 p-3 p-md-4">
+          <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-2">
+            <div>
+              <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Student Management</div>
+              <div class="text-muted" style="font-size:13px">View and manage enrolled students</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button class="btn-icon-sm" title="Filter"><i class="bi bi-funnel"></i></button>
+              <a href="?modal=export" class="btn btn-navy btn-sm fw-semibold">
+                <i class="bi bi-download me-1"></i>Export
+              </a>
+              <a href="?modal=addStudent" class="btn btn-navy btn-sm fw-semibold">
+                <i class="bi bi-person-plus me-1"></i>Add Student
+              </a>
+            </div>
+          </div>
+
+          <div class="position-relative mb-3">
+            <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+            <input type="text" class="form-control ps-5" placeholder="Search students..." oninput="filterTable('stuTable',this.value)">
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle" id="stuTable">
+              <thead class="table-light">
+                <tr>
+                  @foreach(['#','Name','Grade','Session','Status','Payment','Actions'] as $h)
+                  <th style="text-transform:uppercase;letter-spacing:.04em;color:#64748b">{{ $h }}</th>
+                  @endforeach
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($students as $i => $stu)
+                @php
+                  $stuFullName = $stu->last_name . ', ' . $stu->first_name . ($stu->middle_name && $stu->middle_name !== 'N/A' ? ' ' . substr($stu->middle_name,0,1).'.' : '');
+                  $stuInitials = strtoupper(substr($stu->first_name,0,1) . substr($stu->last_name,0,1));
+                  $avatarColors = ['av-blue','av-teal','av-orange','av-green','av-purple'];
+                  $avatarColor  = $avatarColors[$i % count($avatarColors)];
+                @endphp
+                <tr>
+                  <td>{{ $i + 1 }}</td>
+                  <td><span class="stu-avatar {{ $avatarColor }}">{{ $stuInitials }}</span> {{ $stuFullName }}</td>
+                  <td>{{ $stu->grade_level }}</td>
+                  <td>
+                    <span class="badge rounded-pill px-2" style="background:{{ $stu->preferred_session === 'AM' ? '#dbeafe' : '#fce7f3' }};color:{{ $stu->preferred_session === 'AM' ? '#1e40af' : '#be185d' }};font-size:11px">
+                      {{ $stu->preferred_session }}
+                    </span>
+                  </td>
+                  <td><span class="badge-{{ $stu->status === 'enrolled' ? 'enrolled' : 'approved' }}">{{ ucfirst($stu->status) }}</span></td>
+                  <td>
+                    @php
+                      $payments = $stu->tuitionPlan?->payments ?? collect();
+                      $hasUnpaid  = $payments->contains('status', 'unpaid');
+                      $hasPending = $payments->contains('status', 'pending');
+                    @endphp
+                    @if($payments->isEmpty())
+                      <span class="text-muted" style="font-size:11px">—</span>
+                    @elseif($hasPending)
+                      <span class="badge rounded-pill px-2" style="background:#e0f2fe;color:#0369a1;font-size:11px">Pending</span>
+                    @elseif($hasUnpaid)
+                      <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">Unpaid</span>
+                    @else
+                      <span class="badge rounded-pill px-2" style="background:#dcfce7;color:#166534;font-size:11px">Paid</span>
+                    @endif
+                  </td>
+                  <td>
+                    <div class="action-menu-wrap position-relative">
+                      <button class="btn btn-sm btn-light border action-dots-btn" onclick="toggleActionMenu(event,this)">
+                        <i class="bi bi-three-dots-vertical"></i>
+                      </button>
+                      <div class="action-dropdown shadow-sm">
+                        <a class="action-item" href="?modal=profile&app_id={{ $stu->id }}">
+                          <i class="bi bi-eye text-navy"></i> View Profile
+                        </a>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                @empty
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-4">
+                    <i class="bi bi-people" style="font-size:32px"></i>
+                    <div class="mt-2">No approved or enrolled students yet</div>
+                  </td>
+                </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-3 text-muted" style="font-size:13px">Total: {{ $students->count() }} student(s)</div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════
+           TAB: SECTIONS
+      ══════════════════════════════════════ -->
+      <div id="admin-tab-sections" class="d-none">
+        <div class="card border rounded-3 p-3 p-md-4">
+          <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-2">
+            <div>
+              <div class="fw-bold mb-1" style="font-size:15px;color:#1e293b">Section Management</div>
+              <div class="text-muted" style="font-size:13px">Click a grade level to view its sections</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button class="btn btn-sm fw-semibold px-3" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0" onclick="openSYArchiveModal()">
+                <i class="bi bi-archive me-1"></i>SY Archives
+              </button>
+              <a href="?modal=createSection" class="btn btn-navy btn-sm fw-semibold">
+                <i class="bi bi-plus-circle me-1"></i>Generate Sections
+              </a>
+            </div>
+          </div>
+
+          <!-- Current SY pill -->
+          <div class="d-flex align-items-center gap-2 mb-4 p-2 rounded-2" style="background:#eff6ff;border:1px solid #bfdbfe;font-size:13px">
+            <i class="bi bi-calendar2-week-fill" style="color:#1e40af"></i>
+            <span class="fw-semibold" style="color:#1e40af">Currently Viewing: SY 2025–2026</span>
+            <span class="badge rounded-pill ms-1" style="background:#1e3a8a;color:#fff;font-size:11px">Active</span>
+          </div>
+
+          {{-- All grades with real enrollment counts from DB --}}
+          @foreach($gradeConfig as $gradeLabel => $gc)
+          @php
+            $gradeSections    = $sectionsByGrade[$gradeLabel] ?? collect();
+            $totalSectioned   = $gradeSections->sum('students_count');
+            $unsectionedCount = $unsectionedByGrade[$gradeLabel] ?? 0;
+            $gid              = $gc['id'];
+            $gcColor          = $gc['color'];
+            $gcBg             = $gc['bg'];
+          @endphp
+          <div class="grade-card" id="{{ $gid }}">
+            <div class="grade-header" onclick="toggleGrade('{{ $gid }}')">
+              <div class="grade-icon {{ $gc['icon'] }}"><i class="bi bi-mortarboard-fill"></i></div>
+              <div class="grade-info">
+                <div class="grade-title">{{ $gradeLabel }}</div>
+                <div class="grade-meta" id="{{ $gid }}-meta">
+                  @if($gradeSections->count() > 0)
+                    {{ $gradeSections->count() }} Section(s) &bull; {{ $totalSectioned }} Students
+                  @else
+                    No sections yet
+                  @endif
+                  @if($unsectionedCount > 0)
+                    &bull; <span style="color:#b45309">{{ $unsectionedCount }} awaiting sectioning</span>
+                  @endif
+                </div>
+              </div>
+              <div class="grade-bar-wrap">
+                <div class="grade-pill-bar">
+                  <div class="fill {{ $gc['fill'] }}" style="width:{{ $gradeSections->count() > 0 ? min(100, round($totalSectioned / $gradeSections->count() / 30 * 100)) : 0 }}%"></div>
+                </div>
+              </div>
+              <i class="bi bi-chevron-down chevron"></i>
+            </div>
+            <div class="sections-wrap" id="{{ $gid }}-sections">
+              @if($gradeSections->count() > 0)
+                @foreach($gradeSections as $sec)
+                @php $pct = round($sec->students_count / \App\Http\Controllers\SectionController::MAX_SIZE * 100); @endphp
+                <div class="section-row">
+                  <div class="section-top">
+                    <div class="section-icon" style="background:{{ $gcBg }};color:{{ $gcColor }}">
+                      <i class="bi bi-book-fill"></i>
+                    </div>
+                    <div>
+                      <div class="section-title">{{ $sec->name }}</div>
+                    </div>
+                    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+                      <span style="font-size:12px;font-weight:600;color:{{ $gcColor }};background:{{ $gcBg }};padding:2px 10px;border-radius:20px">
+                        {{ $sec->students_count }}/{{ \App\Http\Controllers\SectionController::MAX_SIZE }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="cap-row">
+                    <span class="cap-label">Capacity</span>
+                    <span class="cap-value">{{ $sec->students_count }} / {{ \App\Http\Controllers\SectionController::MAX_SIZE }} students</span>
+                  </div>
+                  <div class="cap-bar">
+                    <div class="fill {{ $gc['fill'] }}" style="width:{{ $pct }}%"></div>
+                  </div>
+                </div>
+                @endforeach
+              @else
+                <div class="empty-section-state">
+                  <div class="empty-section-icon" style="background:{{ $gcBg }};color:{{ $gcColor }}">
+                    <i class="bi bi-layout-text-sidebar-reverse"></i>
+                  </div>
+                  <div class="empty-section-title">No Sections Yet</div>
+                  <div class="empty-section-sub">
+                    @if($unsectionedCount > 0)
+                      {{ $unsectionedCount }} approved student(s) in <strong>{{ $gradeLabel }}</strong> are waiting — click "Generate Sections" above to assign them.
+                    @else
+                      Once students for <strong>{{ $gradeLabel }}</strong> are approved, sections can be generated here.
+                    @endif
+                  </div>
+                </div>
+              @endif
+            </div>
+          </div>
+          @endforeach
+        </div>
+      </div>
+
+      <!-- ═══ TAB: MY PROFILE ═══ -->
+      <div id="admin-tab-profile" class="d-none">
+        <div class="fw-bold mb-1" style="font-size:20px;color:#1e293b">My Profile</div>
+        <div class="text-muted mb-4" style="font-size:14px">Manage your profile picture and account password</div>
+
+        <!-- Profile Picture -->
+        <div class="card border rounded-3 p-4 mb-4">
+          <div class="fw-bold mb-3 pb-3" style="font-size:15px;color:#1e293b;border-bottom:1px solid #f1f5f9"><i class="bi bi-image-fill me-2 text-navy"></i>Profile Picture</div>
+          <div class="d-flex flex-column align-items-center text-center py-2">
+            <div class="pp-avatar-wrap" id="ppAvatarTrigger" onclick="openPhotoModal()" role="button" tabindex="0" title="Change profile photo">
+              @if($user->profile_photo ?? false)
+                <img src="{{ asset('storage/'.$user->profile_photo) }}" alt="Profile photo" class="pp-avatar-img" id="ppCurrentImg">
+              @else
+                <div class="pp-avatar-fallback" id="ppCurrentFallback"><i class="bi bi-person-fill"></i></div>
+              @endif
+              <div class="pp-avatar-overlay"><i class="bi bi-camera-fill"></i></div>
+              <div class="pp-avatar-badge"><i class="bi bi-camera-fill"></i></div>
+            </div>
+            <div class="fw-semibold mt-3" style="font-size:14.5px;color:#1e293b">{{ $fullName }}</div>
+            <div class="text-muted" style="font-size:13px">{{ $user->email }}</div>
+            <button type="button" class="btn btn-outline-navy btn-sm fw-semibold mt-3" onclick="openPhotoModal()">
+              <i class="bi bi-pencil-fill me-1"></i>Change Photo
+            </button>
+          </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="card border rounded-3 p-4">
+          <div class="fw-bold mb-3 pb-3" style="font-size:15px;color:#1e293b;border-bottom:1px solid #f1f5f9"><i class="bi bi-shield-lock-fill me-2 text-navy"></i>Change Password</div>
+
+          <div class="alert d-flex align-items-start gap-2 mb-4" style="background:var(--navy-light);border:1px solid #c7d2ea;border-radius:10px">
+            <i class="bi bi-info-circle-fill" style="color:var(--navy);margin-top:2px"></i>
+            <div style="font-size:13px;color:var(--navy)">For your security, choose a strong password with at least 8 characters including uppercase, lowercase, numbers, and symbols.</div>
+          </div>
+
+          <form id="changePasswordForm" onsubmit="submitChangePassword(event)">
+            <div class="mb-3">
+              <label class="form-label fw-medium" style="font-size:13px">Current Password <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <input type="password" id="cp-current" class="form-control" placeholder="Enter your current password" required>
+                <button type="button" class="btn btn-outline-secondary" onclick="togglePw('cp-current',this)"><i class="bi bi-eye"></i></button>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-medium" style="font-size:13px">New Password <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <input type="password" id="cp-new" class="form-control" placeholder="Enter new password" minlength="8" required oninput="updatePasswordChecklist(this.value, 'cp-new-req')">
+                  <button type="button" class="btn btn-outline-secondary" onclick="togglePw('cp-new',this)"><i class="bi bi-eye"></i></button>
+                </div>
+                @include('partials.password-checklist', ['prefix' => 'cp-new-req'])
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-medium" style="font-size:13px">Confirm New Password <span class="text-danger">*</span></label>
+                <div class="input-group">
+                  <input type="password" id="cp-confirm" class="form-control" placeholder="Re-enter new password" minlength="8" required>
+                  <button type="button" class="btn btn-outline-secondary" onclick="togglePw('cp-confirm',this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-navy fw-semibold mt-4">
+              <i class="bi bi-shield-check me-1"></i>Update Password
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div><!-- /admin-content -->
+  </div><!-- /main-area -->
+</div><!-- /page-wrapper -->
+
+<!-- ═══ MODAL: FLAG DOCUMENT FOR RESUBMIT ═══ -->
+<div class="modal fade" id="resubmitFeedbackModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#991b1b"><i class="bi bi-arrow-repeat me-2"></i>Flag for Resubmit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px">Let the parent know what's wrong with <strong id="resubmitDocLabel"></strong> so they can re-upload it — e.g. the photo is blurry, cropped, or the wrong document.</p>
+        <label class="form-label fw-medium" style="font-size:13px">Note to Parent <span class="text-danger">*</span></label>
+        <textarea class="form-control" id="resubmitFeedbackText" rows="3" placeholder="e.g. The photo is too blurry to read — please retake it in good lighting."></textarea>
+        <div id="resubmitFeedbackError" class="text-danger mt-2 d-none" style="font-size:12.5px"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm fw-semibold" id="resubmitFeedbackSubmitBtn" onclick="submitResubmitFlag()">
+          <i class="bi bi-send me-1"></i>Notify Parent
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: MODERN PHOTO UPLOAD ═══ -->
+<div class="modal fade" id="managePhotoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content pp-modal">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b">Update Profile Photo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" onclick="resetPhotoModal()"></button>
+      </div>
+      <form id="profilePhotoForm" onsubmit="submitProfilePhoto(event)">
+        <div class="modal-body pt-2">
+
+          <div class="pp-dropzone" id="ppDropzone" onclick="document.getElementById('pp-file').click()">
+            <div class="pp-preview-circle" id="ppPreviewCircle">
+              @if($user->profile_photo ?? false)
+                <img src="{{ asset('storage/'.$user->profile_photo) }}" alt="" id="ppPreviewImg">
+              @else
+                <div class="pp-preview-fallback" id="ppPreviewFallback"><i class="bi bi-person-fill"></i></div>
+                <img src="" alt="" id="ppPreviewImg" style="display:none">
+              @endif
+            </div>
+            <div class="pp-dropzone-text">
+              <div class="fw-semibold" style="font-size:13.5px;color:#1e293b" id="ppDropzoneTitle">Drag & drop a photo here</div>
+              <div class="text-muted" style="font-size:12px">or <span class="text-navy fw-semibold">click to browse</span> &nbsp;•&nbsp; JPG/PNG, up to 2MB</div>
+            </div>
+            <input type="file" id="pp-file" name="profile_photo" accept="image/png, image/jpeg" class="d-none" onchange="handlePhotoSelect(this.files[0])">
+          </div>
+
+          <div id="ppFileMeta" class="d-none mt-3 d-flex align-items-center justify-content-between rounded-3 px-3 py-2" style="background:#f8fafc;border:1px solid var(--border)">
+            <div class="d-flex align-items-center gap-2" style="font-size:12.5px;color:#475569">
+              <i class="bi bi-file-earmark-image text-navy"></i>
+              <span id="ppFileName" class="text-truncate" style="max-width:220px"></span>
+            </div>
+            <button type="button" class="btn btn-sm btn-link text-danger p-0" style="font-size:12px" onclick="clearPhotoSelect()"><i class="bi bi-x-circle"></i> Remove</button>
+          </div>
+
+          <div id="ppErrorMsg" class="text-danger mt-2 d-none" style="font-size:12.5px"><i class="bi bi-exclamation-circle me-1"></i><span></span></div>
+        </div>
+        <div class="modal-footer border-0">
+          @if($user->profile_photo ?? false)
+          <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeProfilePhoto()"><i class="bi bi-trash me-1"></i>Remove Current Photo</button>
+          @endif
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" onclick="resetPhotoModal()">Cancel</button>
+          <button type="submit" class="btn btn-navy btn-sm fw-semibold" id="ppSubmitBtn" disabled><i class="bi bi-check-lg me-1"></i>Save Photo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     PHP-DRIVEN MODALS (opened via ?modal=xxx)
+═══════════════════════════════════════════ -->
+
+<?php if($modal === 'profile'): ?>
+<!-- MODAL: VIEW PROFILE -->
+@php
+  $p = $profileEnrollment;
+  $closeHref = '?tab=applications';
+@endphp
+<div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      @if($p)
+      @php
+        $pInitials = strtoupper(substr($p->first_name,0,1) . substr($p->last_name,0,1));
+        $pFullName = $p->first_name . ' ' . ($p->middle_name && $p->middle_name !== 'N/A' ? $p->middle_name . ' ' : '') . $p->last_name . ($p->suffix && $p->suffix !== 'N/A' ? ', ' . $p->suffix : '');
+        $pAge = $p->birthday ? \Carbon\Carbon::parse($p->birthday)->age : '—';
+        $pRequirements = $p->requirements ?? collect();
+      @endphp
+      <div style="background:linear-gradient(135deg,#1e3a8a 0%,#0d9488 100%);padding:28px 28px 20px;position:relative">
+        <a href="{{ $closeHref }}" class="btn-close btn-close-white position-absolute top-0 end-0 m-3"></a>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.2);border:3px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff">
+            {{ $pInitials }}
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.65);margin-bottom:3px">
+              {{ in_array($p->status, ['enrolled']) ? 'Enrolled Student – Full Profile' : 'Admission Application – Full Details' }}
+            </div>
+            <div style="font-size:22px;font-weight:800;color:#fff">{{ $pFullName }}</div>
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+              <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px">{{ $p->grade_level }}</span>
+              <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px">SY 2025–2026</span>
+              <span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px">{{ $p->preferred_session }} Class</span>
+              @if($p->status === 'enrolled')
+              <span style="background:#dcfce7;color:#166534;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">● Enrolled</span>
+              @elseif($p->status === 'approved')
+              <span style="background:#dbeafe;color:#1e40af;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">● Approved</span>
+              @else
+              <span style="background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">● Pending Review</span>
+              @endif
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-4 mt-3 flex-wrap" style="font-size:12px;color:rgba(255,255,255,.75)">
+          <div><i class="bi bi-credit-card-2-front me-1"></i>LRN: {{ $p->lrn !== 'N/A' ? $p->lrn : 'Not provided' }}</div>
+          <div><i class="bi bi-geo-alt me-1"></i>{{ $p->birth_place }}</div>
+          <div><i class="bi bi-calendar3 me-1"></i>{{ $p->birthday ? \Carbon\Carbon::parse($p->birthday)->format('M d, Y') : '—' }}</div>
+        </div>
+      </div>
+      <div class="modal-body p-0" style="background:#f8fafc">
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+
+          {{-- Learner Info --}}
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#1e3a8a;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-person-fill"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Learner Information</span>
+            </div>
+            <div style="padding:18px 16px">
+              <div class="row g-3">
+                <div class="col-12"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">Full Name</div><div style="font-size:15px;font-weight:700;color:#1e293b">{{ $p->last_name }}, {{ $p->first_name }} {{ $p->middle_name !== 'N/A' ? $p->middle_name : '' }}</div></div>
+                <div class="col-6 col-md-4"><div style="font-size:10.5px;color:#94a3b8">LRN</div><div style="font-size:13px;font-weight:600;font-family:monospace">{{ $p->lrn !== 'N/A' ? $p->lrn : '—' }}</div></div>
+                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Date of Birth</div><div style="font-size:13px;font-weight:600">{{ $p->birthday ? \Carbon\Carbon::parse($p->birthday)->format('M d, Y') : '—' }}</div></div>
+                <div class="col-3 col-md-2"><div style="font-size:10.5px;color:#94a3b8">Age</div><div style="font-size:13px;font-weight:600">{{ $pAge }}</div></div>
+                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Last School Attended</div><div style="font-size:13px;font-weight:600">{{ $p->last_school ?? '—' }}</div></div>
+                <div class="col-md-6"><div style="font-size:10.5px;color:#94a3b8">Place of Birth</div><div style="font-size:13px;font-weight:600">{{ $p->birth_place }}</div></div>
+                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Preferred Session</div><div style="font-size:13px;font-weight:600">{{ $p->preferred_session }}</div></div>
+                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Payment Method</div><div style="font-size:13px;font-weight:600">{{ ucfirst(str_replace('_',' ',$p->payment_method)) }}</div></div>
+              </div>
+            </div>
+          </div>
+
+          {{-- Address --}}
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#0d9488;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-geo-alt-fill"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Current Address</span>
+            </div>
+            <div style="padding:14px 16px;font-size:14px;font-weight:500;color:#374151;line-height:1.6">{{ $p->address }}</div>
+          </div>
+
+          {{-- Parents / Guardian --}}
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#d97706;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-people-fill"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Parent / Guardian Information</span>
+            </div>
+            <div style="padding:16px">
+              @foreach([['role'=>'Father','name'=>$p->father_name,'contact'=>$p->emergency_contact,'bg'=>'#dbeafe','color'=>'#1e40af'],['role'=>'Mother','name'=>$p->mother_name,'contact'=>'—','bg'=>'#fce7f3','color'=>'#be185d'],['role'=>'Guardian','name'=>$p->guardian_name,'contact'=>'—','bg'=>'#dcfce7','color'=>'#166534']] as $g)
+              <div class="d-flex align-items-start gap-3 mb-3 p-3 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0">
+                <div style="width:34px;height:34px;border-radius:50%;background:{{ $g['bg'] }};display:flex;align-items:center;justify-content:center;font-size:14px;color:{{ $g['color'] }};flex-shrink:0"><i class="bi bi-person"></i></div>
+                <div class="row g-0 w-100">
+                  <div class="col-12 mb-1"><span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#94a3b8">{{ $g['role'] }}</span></div>
+                  <div class="col-md-7"><div style="font-size:11px;color:#94a3b8">Name</div><div style="font-size:13.5px;font-weight:600;color:#1e293b">{{ $g['name'] }}</div></div>
+                  <div class="col-md-5"><div style="font-size:11px;color:#94a3b8">Contact</div><div style="font-size:13.5px;font-weight:600;color:#1e293b">{{ $g['contact'] }}</div></div>
+                </div>
+              </div>
+              @endforeach
+            </div>
+          </div>
+
+          {{-- Submitted Requirements --}}
+          @if($pRequirements->isNotEmpty())
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#c0392b;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-file-earmark-check-fill"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Submitted Requirements</span>
+            </div>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              @foreach($pRequirements as $doc)
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" id="req-doc-{{ $doc->id }}" style="background:#f8fafc;border:1px solid #e2e8f0">
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:13px;font-weight:600;color:#1e293b">{{ $doc->document_label }}</div>
+                  <div class="mt-1" id="req-doc-status-{{ $doc->id }}">
+                    @if($doc->status === 'needs_resubmit')
+                      <span class="badge-resubmit">Needs Resubmit</span>
+                    @elseif($doc->status === 'approved')
+                      <span class="badge-approved">Approved</span>
+                    @else
+                      <span class="badge-pending">Pending Review</span>
+                    @endif
+                  </div>
+                  @if($doc->status === 'needs_resubmit' && $doc->feedback)
+                  <div class="mt-2" style="font-size:12px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>{{ $doc->feedback }}
+                  </div>
+                  @endif
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0" id="req-doc-actions-{{ $doc->id }}">
+                  <a href="{{ asset('storage/' . $doc->path) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="font-size:12px"><i class="bi bi-eye me-1"></i>View</a>
+                  @if($doc->status !== 'needs_resubmit')
+                  <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $doc->id }}, '{{ addslashes($doc->document_label) }}')">
+                    <i class="bi bi-arrow-repeat me-1"></i>Flag for Resubmit
+                  </button>
+                  @endif
+                </div>
+              </div>
+              @endforeach
+            </div>
+          </div>
+          @endif
+
+          {{-- Tuition Payments --}}
+          @if($p->tuitionPlan)
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#0369a1;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-cash-coin"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Tuition Payments</span>
+              <span class="text-muted" style="font-size:12px;margin-left:auto">{{ ucfirst($p->tuitionPlan->plan_type) }} Plan &bull; ₱{{ number_format($p->tuitionPlan->total_amount, 2) }} total</span>
+            </div>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
+                <div style="font-size:13px;font-weight:600;color:#1e293b">Upon Enrollment (Down Payment) — ₱{{ number_format($p->tuitionPlan->down_payment, 2) }}</div>
+                <span class="badge-approved">Paid</span>
+              </div>
+              @foreach($p->tuitionPlan->payments->sortBy('installment_number') as $pay)
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" id="tuition-pay-{{ $pay->id }}" style="background:#f8fafc;border:1px solid #e2e8f0">
+                <div style="min-width:0;flex:1">
+                  @php
+                    $payMethodLabels = ['gcash'=>'GCash','maya'=>'Maya','bank_transfer'=>'Bank Transfer','cash'=>'Cash'];
+                  @endphp
+                  <div style="font-size:13px;font-weight:600;color:#1e293b">Installment {{ $pay->installment_number }} — ₱{{ number_format($pay->amount_due, 2) }}</div>
+                  <div class="text-muted mt-1" style="font-size:11.5px">Due {{ $pay->due_date->format('M j, Y') }}</div>
+                  @if($pay->payment_method)
+                  <div class="text-muted mt-1" style="font-size:11.5px">
+                    <i class="bi bi-credit-card me-1"></i>{{ $payMethodLabels[$pay->payment_method] ?? $pay->payment_method }}
+                    @if($pay->submitted_at) &bull; Submitted {{ $pay->submitted_at->format('M j, Y g:i A') }} @endif
+                    @if($pay->paid_at) &bull; Verified {{ $pay->paid_at->format('M j, Y g:i A') }} @endif
+                  </div>
+                  @endif
+                  <div class="mt-1">
+                    @if($pay->status === 'paid')
+                      <span class="badge-approved">Paid</span>
+                    @elseif($pay->status === 'pending')
+                      <span class="badge-pending">Pending Verification</span>
+                    @else
+                      <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">Unpaid</span>
+                    @endif
+                  </div>
+                  @if($pay->status === 'unpaid' && $pay->feedback)
+                  <div class="mt-2" style="font-size:12px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i>{{ $pay->feedback }}
+                  </div>
+                  @endif
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                  @if($pay->proof_of_payment)
+                  <a href="{{ asset('storage/' . $pay->proof_of_payment) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="font-size:12px"><i class="bi bi-eye me-1"></i>View Proof</a>
+                  @endif
+                  @if($pay->status === 'pending')
+                  <button type="button" class="btn btn-success btn-sm" style="font-size:12px" onclick="verifyTuitionPayment({{ $pay->id }})">
+                    <i class="bi bi-check-lg me-1"></i>Verify
+                  </button>
+                  <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $pay->id }}, 'Installment {{ $pay->installment_number }}', true)">
+                    <i class="bi bi-arrow-repeat me-1"></i>Reject
+                  </button>
+                  @endif
+                </div>
+              </div>
+              @endforeach
+            </div>
+          </div>
+          @endif
+
+          {{-- Proof of Payment --}}
+          @if($p->proof_of_payment)
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+            <div style="padding:12px 16px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:8px;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-receipt"></i></div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Proof of Payment</span>
+            </div>
+            <div style="padding:14px 16px">
+              <a href="{{ asset('storage/' . $p->proof_of_payment) }}" target="_blank"
+                 style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;text-decoration:none">
+                <i class="bi bi-file-earmark me-1"></i>View Payment Proof
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+            </div>
+          </div>
+          @endif
+
+        </div>
+      </div>
+
+      <div class="modal-footer border-0" style="background:#f8fafc;padding:14px 24px">
+        @if($p->status === 'pending')
+        <button type="button" class="btn btn-success btn-sm fw-semibold px-3" onclick="approveApplication({{ $p->id }}, '{{ addslashes($p->first_name . ' ' . $p->last_name) }}')">
+          <i class="bi bi-check-circle me-1"></i>Approve
+        </button>
+        @endif
+        <a href="{{ $closeHref }}" class="btn btn-light btn-sm border px-4 fw-medium"><i class="bi bi-x me-1"></i>Close</a>
+      </div>
+      @else
+      <div class="modal-body text-center py-5">
+        <i class="bi bi-person-x" style="font-size:40px;color:#94a3b8"></i>
+        <div class="mt-2 text-muted">Profile not found.</div>
+      </div>
+      <div class="modal-footer border-0">
+        <a href="{{ $closeHref }}" class="btn btn-outline-secondary btn-sm">Close</a>
+      </div>
+      @endif
+    </div>
+  </div>
+</div>
+
+<?php elseif($modal === 'addStudent'): ?>
+<!-- MODAL: ADD STUDENT -->
+<div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-person-plus-fill me-2 text-navy"></i>Add Student – Late Enrollment</h5>
+          <div class="text-muted" style="font-size:13px">Admin bypass for late-enrolled students. Complete all fields below.</div>
+        </div>
+        <a href="{{ route('admin.dashboard') }}" class="btn-close" aria-label="Close"></a>
+      </div>
+      <div class="modal-body">
+        <div class="fw-semibold mb-2 mt-1" style="font-size:13.5px;color:#1e293b;border-left:3px solid var(--navy);padding-left:10px">School Information</div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">School Year *</label><input type="text" class="form-control" value="2025-2026"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Grade Level *</label><select class="form-select" id="addStudentGrade"><option value="">Select grade level</option><option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option></select></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Section *</label><input type="text" class="form-control" placeholder="e.g., Section A"></div>
+        </div>
+        <div class="fw-semibold mb-2" style="font-size:13.5px;color:#1e293b;border-left:3px solid var(--navy);padding-left:10px">Learner Information</div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Last Name *</label><input type="text" class="form-control" placeholder="Last Name"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">First Name *</label><input type="text" class="form-control" placeholder="First Name"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Middle Name</label><input type="text" class="form-control" placeholder="Middle Name"></div>
+          <div class="col-md-3"><label class="form-label fw-medium" style="font-size:13px">Date of Birth *</label><input type="date" class="form-control"></div>
+          <div class="col-md-2"><label class="form-label fw-medium" style="font-size:13px">Age *</label><input type="number" class="form-control" placeholder="Age"></div>
+          <div class="col-md-3"><label class="form-label fw-medium d-block" style="font-size:13px">Sex *</label><div class="d-flex gap-4 mt-1"><label><input type="radio" name="as-sex" value="Male"> Male</label><label><input type="radio" name="as-sex" value="Female"> Female</label></div></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Email *</label><input type="email" class="form-control" placeholder="student@email.com"></div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+        <button class="btn btn-navy btn-sm fw-semibold" onclick="showToast('Student enrolled successfully!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1600)">
+          <i class="bi bi-person-check me-1"></i>Enroll Student
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php elseif($modal === 'export'): ?>
+<!-- MODAL: EXPORT -->
+<div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-download me-2 text-navy"></i>Export Student Data</h5>
+        <a href="{{ route('admin.dashboard') }}" class="btn-close" aria-label="Close"></a>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">School Year</label><select class="form-select"><option>2025–2026</option><option>2024–2025</option></select></div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Grade Level</label><select class="form-select"><option value="">All Grades</option><option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option></select></div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Format</label><select class="form-select"><option>CSV (.csv)</option><option>Excel (.xlsx)</option><option>PDF (.pdf)</option></select></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+        <button class="btn btn-navy btn-sm fw-semibold" onclick="showToast('Export started!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1600)"><i class="bi bi-download me-1"></i>Export Now</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php elseif($modal === 'transfer'): ?>
+<!-- MODAL: TRANSFER SECTION -->
+<div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#1e3a8a,#0d9488);padding:22px 28px 18px;position:relative">
+        <a href="{{ route('admin.dashboard') }}" class="btn-close btn-close-white position-absolute top-0 end-0 m-3"></a>
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff"><i class="bi bi-arrow-left-right"></i></div>
+          <div>
+            <div style="font-size:17px;font-weight:800;color:#fff">Transfer Section</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7)">Student ID: {{ $stuId }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-body p-4">
+        <div class="alert alert-info py-2 mb-3" style="font-size:13px">
+          <i class="bi bi-info-circle me-1"></i>Transferring: <strong>{{ $stuName }}</strong>
+        </div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">New Grade Level *</label>
+          <select class="form-select" disabled><option selected>Grade 7</option></select>
+        </div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">New Section *</label>
+          <input type="text" class="form-control" placeholder="e.g., Section B">
+        </div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Reason</label>
+          <textarea class="form-control" rows="2" placeholder="Optional reason..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0 px-4 pb-4">
+        <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+        <button class="btn btn-navy btn-sm fw-semibold px-4" onclick="showToast('{{ addslashes($stuName) }} transferred successfully!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1800)">
+          <i class="bi bi-check-circle me-1"></i>Confirm Transfer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php elseif($modal === 'createSection'): ?>
+<!-- MODAL: CREATE SECTION -->
+<div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#1e3a8a,#0d9488);padding:24px 28px 20px;position:relative">
+        <a href="{{ route('admin.dashboard') }}" class="btn-close btn-close-white position-absolute top-0 end-0 m-3"></a>
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff"><i class="bi bi-layout-text-sidebar-reverse"></i></div>
+          <div>
+            <div style="font-size:17px;font-weight:800;color:#fff">Generate Sections</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7)">Pick a grade level to auto-section its approved students</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-body p-4" style="background:#f8fafc">
+        <div style="font-size:13px;color:#64748b;margin-bottom:18px;text-align:center">
+          Every approved, unsectioned student in the grade gets grouped into sections of up to 30 (e.g. 31 students &rarr; two sections of 16 and 15). AM/PM is a schedule preference only and does not split sections.
+        </div>
+        <div class="row g-3">
+          @foreach($gradeConfig as $gradeLabel => $gc)
+          @php
+            $gradeUnsectioned = $unsectionedByGrade[$gradeLabel] ?? 0;
+          @endphp
+          <div class="col-6">
+            <button type="button" class="grade-pick-btn text-center p-3 w-100 border-0" style="border:2px solid #e2e8f0;border-radius:14px;background:#fff;cursor:{{ $gradeUnsectioned > 0 ? 'pointer' : 'not-allowed' }}" {{ $gradeUnsectioned > 0 ? '' : 'disabled' }} onclick="generateSections('{{ $gradeLabel }}', this)">
+              <div class="grade-pick-icon mx-auto mb-2" style="width:48px;height:48px;border-radius:12px;background:{{ $gc['bg'] }};color:{{ $gc['color'] }};display:flex;align-items:center;justify-content:center;font-size:22px">
+                <i class="bi bi-mortarboard-fill"></i>
+              </div>
+              <div class="fw-bold" style="font-size:14px;color:#1e293b">{{ $gradeLabel }}</div>
+              @if($gradeUnsectioned > 0)
+                <div style="font-size:11px;margin-top:4px">
+                  <span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:20px;font-weight:600">
+                    {{ $gradeUnsectioned }} awaiting &rarr; {{ (int) ceil($gradeUnsectioned / \App\Http\Controllers\SectionController::MAX_SIZE) }} section(s)
+                  </span>
+                </div>
+              @else
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px">No approved students waiting</div>
+              @endif
+            </button>
+          </div>
+          @endforeach
+        </div>
+      </div>
+      <div class="modal-footer border-0" style="background:#f8fafc;padding:12px 24px">
+        <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm px-4">Cancel</a>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
+<!-- ===================== MODAL: SY ARCHIVES ===================== -->
+<div class="modal fade" id="syArchiveModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#1e3a8a,#0d9488);padding:24px 28px 20px;position:relative">
+        <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff">
+            <i class="bi bi-archive-fill"></i>
+          </div>
+          <div>
+            <div style="font-size:17px;font-weight:800;color:#fff">School Year Archives</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7)">Past enrollment batches by school year — click a row to expand</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-body p-4" id="syArchiveBody" style="background:#f8fafc">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer border-0 bg-white px-4 pb-4">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@endsection
+
+
+
+<!-- Bootstrap JS already loaded once, globally, by layout/app.blade.php -->
+<script src="{{ asset('vendor/chartjs/chart.umd.js') }}"></script>
+<script>
+
+/* ── Live chart data from the server (real enrollment records) ── */
+const _chartData = {
+  gradeLabels: @json($chartGradeLabels),
+  gradeData:   @json($chartGradeData),
+  male:        {{ $maleCount }},
+  female:      {{ $femaleCount }},
+  statusApproved: {{ $statusApproved }},
+  statusPending:  {{ $statusPending }},
+  trendLabels: @json($trendLabels),
+  trendData:   @json($trendData),
+};
+
+/* ── Sidebar ── */
+function openSidebar()  { document.getElementById('leftSidebar').classList.add('open'); document.getElementById('sbOverlay').classList.add('open'); }
+function closeSidebar() { document.getElementById('leftSidebar').classList.remove('open'); document.getElementById('sbOverlay').classList.remove('open'); }
+
+/* ── Bootstrap modal helper ── */
+function bsModal(id) { return bootstrap.Modal.getOrCreateInstance(document.getElementById(id)); }
+
+/* ── Shared CSRF-aware fetch helper ──
+   NOTE: assumes routes admin.profile.photo (POST, multipart), admin.profile.photo.remove (DELETE),
+   and admin.profile.password (PUT) exist — see route checklist. */
+function apiFetch(url, method = 'GET', body = null, isFormData = false) {
+  const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  const headers = { 'Accept': 'application/json', 'X-CSRF-TOKEN': token || '' };
+  if (!isFormData) headers['Content-Type'] = 'application/json';
+  return fetch(url, { method, headers, body: isFormData ? body : (body ? JSON.stringify(body) : null) })
+    .then(async res => {
+      if (!res.ok) throw new Error(await res.text());
+      return res.status === 204 ? null : res.json();
+    });
+}
+
+/* ── Generate sections for a grade level ── */
+function generateSections(gradeLevel, btn) {
+  if (btn) btn.disabled = true;
+  apiFetch('{{ route("admin.sections.generate") }}', 'POST', { grade_level: gradeLevel })
+    .then(data => {
+      dpnhsToast(data.message || 'Sections generated.', 'success');
+      setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=sections'; }, 700);
+    })
+    .catch(() => {
+      dpnhsToast('Could not generate sections. Please try again.', 'error');
+      if (btn) btn.disabled = false;
+    });
+}
+
+/* ── Flag requirement document (or tuition payment) for resubmit ── */
+let _resubmitDocId = null;
+let _resubmitIsTuition = false;
+function openResubmitModal(docId, docLabel, isTuition) {
+  _resubmitDocId = docId;
+  _resubmitIsTuition = !!isTuition;
+  document.getElementById('resubmitDocLabel').textContent = docLabel;
+  document.getElementById('resubmitFeedbackText').value = '';
+  document.getElementById('resubmitFeedbackError').classList.add('d-none');
+  bsModal('resubmitFeedbackModal').show();
+}
+function submitResubmitFlag() {
+  const feedback = document.getElementById('resubmitFeedbackText').value.trim();
+  const errorEl  = document.getElementById('resubmitFeedbackError');
+  if (!feedback) {
+    errorEl.textContent = 'Please describe what needs to be fixed.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+  const btn = document.getElementById('resubmitFeedbackSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending…';
+
+  const url = _resubmitIsTuition
+    ? `/admin/tuition/payments/${_resubmitDocId}/reject`
+    : `/admin/requirements/${_resubmitDocId}/flag-resubmit`;
+  const method = _resubmitIsTuition ? 'POST' : 'PATCH';
+
+  apiFetch(url, method, { feedback })
+    .then(() => {
+      bsModal('resubmitFeedbackModal').hide();
+      dpnhsToast('Parent has been notified to resubmit.', 'success');
+      setTimeout(() => location.reload(), 800);
+    })
+    .catch(() => {
+      errorEl.textContent = 'Could not send this request. Please try again.';
+      errorEl.classList.remove('d-none');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-send me-1"></i>Notify Parent';
+    });
+}
+
+function approveApplication(enrollmentId, name) {
+  apiFetch(`/admin/applications/${enrollmentId}/approve`, 'PATCH')
+    .then(data => {
+      dpnhsToast(data.message || `${name} has been approved.`, 'success');
+      setTimeout(() => location.reload(), 700);
+    })
+    .catch(() => dpnhsToast('Could not approve this application. Please try again.', 'error'));
+}
+
+function verifyTuitionPayment(paymentId) {
+  apiFetch(`/admin/tuition/payments/${paymentId}/verify`, 'POST')
+    .then(() => {
+      dpnhsToast('Payment marked as paid.', 'success');
+      setTimeout(() => location.reload(), 600);
+    })
+    .catch(() => dpnhsToast('Could not verify this payment. Please try again.', 'error'));
+}
+
+/* ── Profile: modern photo upload (drag-drop + live preview) ── */
+function openPhotoModal() { resetPhotoModal(); bsModal('managePhotoModal').show(); }
+
+function resetPhotoModal() {
+  const fileInput = document.getElementById('pp-file');
+  fileInput.value = '';
+  document.getElementById('ppFileMeta').classList.add('d-none');
+  document.getElementById('ppErrorMsg').classList.add('d-none');
+  document.getElementById('ppSubmitBtn').disabled = true;
+  document.getElementById('ppDropzoneTitle').textContent = 'Drag & drop a photo here';
+  // restore preview to current saved photo (or fallback)
+  const img = document.getElementById('ppPreviewImg');
+  @if($user->profile_photo ?? false)
+    img.src = '{{ asset("storage/".$user->profile_photo) }}';
+    img.style.display = '';
+  @else
+    img.style.display = 'none';
+    const fb = document.getElementById('ppPreviewFallback');
+    if (fb) fb.style.display = 'flex';
+  @endif
+}
+
+function showPhotoError(msg) {
+  const el = document.getElementById('ppErrorMsg');
+  el.classList.remove('d-none');
+  el.querySelector('span').textContent = msg;
+}
+
+function handlePhotoSelect(file) {
+  document.getElementById('ppErrorMsg').classList.add('d-none');
+  if (!file) return;
+  if (!['image/jpeg','image/png'].includes(file.type)) { showPhotoError('Please choose a JPG or PNG image.'); return; }
+  if (file.size > 2 * 1024 * 1024) { showPhotoError('Image must be 2MB or smaller.'); return; }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = document.getElementById('ppPreviewImg');
+    img.src = e.target.result;
+    img.style.display = '';
+    const fb = document.getElementById('ppPreviewFallback');
+    if (fb) fb.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+
+  document.getElementById('ppFileName').textContent = file.name;
+  document.getElementById('ppFileMeta').classList.remove('d-none');
+  document.getElementById('ppDropzoneTitle').textContent = 'Looking good! Click to choose a different photo';
+  document.getElementById('ppSubmitBtn').disabled = false;
+}
+
+function clearPhotoSelect() {
+  document.getElementById('pp-file').value = '';
+  resetPhotoModal();
+}
+
+(function setupPhotoDropzone() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('ppDropzone');
+    if (!zone) return;
+    ['dragenter','dragover'].forEach(evt => zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.add('pp-dragover'); }));
+    ['dragleave','drop'].forEach(evt => zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.remove('pp-dragover'); }));
+    zone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      document.getElementById('pp-file').files = e.dataTransfer.files;
+      handlePhotoSelect(file);
+    });
+  });
+})();
+
+function submitProfilePhoto(e) {
+  e.preventDefault();
+  const fileInput = document.getElementById('pp-file');
+  if (!fileInput.files.length) return;
+  const fd = new FormData();
+  fd.append('profile_photo', fileInput.files[0]);
+  fd.append('_method', 'POST');
+  apiFetch('{{ route("admin.profile.photo") }}', 'POST', fd, true).then(() => {
+    bsModal('managePhotoModal').hide();
+    dpnhsToast('Profile photo updated!', 'success');
+    setTimeout(() => location.reload(), 600);
+  }).catch(() => showPhotoError('Could not upload the photo. Please try again.'));
+}
+function removeProfilePhoto() {
+  if (!confirm('Remove your profile photo?')) return;
+  apiFetch('{{ route("admin.profile.photo.remove") }}', 'DELETE').then(() => {
+    bsModal('managePhotoModal').hide();
+    dpnhsToast('Profile photo removed.', 'success');
+    setTimeout(() => location.reload(), 600);
+  }).catch(() => alert('Could not remove the photo.'));
+}
+
+/* ── Profile: change password ── */
+function submitChangePassword(e) {
+  e.preventDefault();
+  const current = document.getElementById('cp-current').value;
+  const next    = document.getElementById('cp-new').value;
+  const confirm_ = document.getElementById('cp-confirm').value;
+  if (next.length < 8 || !/[A-Z]/.test(next) || !/[0-9]/.test(next) || !/[^A-Za-z0-9]/.test(next)) {
+    alert('New password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
+    return;
+  }
+  if (next !== confirm_) { alert('New password and confirmation do not match.'); return; }
+  apiFetch('{{ route("admin.profile.password") }}', 'PUT', { current_password: current, password: next, password_confirmation: confirm_ })
+    .then(() => { dpnhsToast('Password updated successfully!', 'success'); document.getElementById('changePasswordForm').reset(); setTimeout(() => location.reload(), 600); })
+    .catch(() => alert('Could not update your password. Please check your current password and try again.'));
+}
+
+/* ── Tab switching ── */
+function switchAdminTab(tab, el) {
+  sessionStorage.setItem('adminTab', tab);
+  document.querySelectorAll('.sb-nav-item').forEach(t => t.classList.remove('active'));
+  if (el) {
+    el.classList.add('active');
+  } else {
+    // find and activate the matching nav item
+    document.querySelectorAll('.sb-nav-item[data-tab]').forEach(function(item) {
+      if (item.dataset.tab === tab) item.classList.add('active');
+    });
+  }
+  ['statistics','applications','students','sections','profile'].forEach(function(t) {
+    document.getElementById('admin-tab-'+t).classList.toggle('d-none', t !== tab);
+  });
+  const titles = { applications:'Applications', students:'Students', sections:'Sections', statistics:'Statistics & Analytics', profile:'My Profile' };
+  document.getElementById('pageTitle').textContent = titles[tab] || tab;
+  if (window.innerWidth < 992) closeSidebar();
+  if (tab === 'statistics') initAdminCharts();
+}
+
+/* Restore tab on page load handled inside DOMContentLoaded below */
+
+/* ── Action dropdown ── */
+let _openMenuWrap = null;
+function toggleActionMenu(e, btn) {
+  e.stopPropagation();
+  const wrap = btn.closest('.action-menu-wrap');
+  if (_openMenuWrap && _openMenuWrap !== wrap) _openMenuWrap.classList.remove('open');
+  wrap.classList.toggle('open');
+  _openMenuWrap = wrap.classList.contains('open') ? wrap : null;
+  if (_openMenuWrap) {
+    const dropdown = wrap.querySelector('.action-dropdown');
+    dropdown.classList.remove('dropup');
+    const rect = dropdown.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) dropdown.classList.add('dropup');
+  }
+}
+document.addEventListener('click', () => { if (_openMenuWrap) { _openMenuWrap.classList.remove('open'); _openMenuWrap = null; } });
+function closeMenuThen(fn) { if (_openMenuWrap) { _openMenuWrap.classList.remove('open'); _openMenuWrap = null; } fn(); }
+
+/* ── Table search ── */
+function filterTable(tid, q) {
+  document.querySelectorAll('#'+tid+' tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+/* ── Grade accordion ── */
+function toggleGrade(id) { document.getElementById(id).classList.toggle('open'); }
+
+/* ── Toast helper ── */
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'dpnhs-toast';
+  t.innerHTML = `<i class="bi bi-check-circle-fill" style="color:#4ade80;font-size:18px"></i>${msg}`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+/* ── SY Archive modal ── */
+const _syArchives = [
+  {
+    sy: 'SY 2025\u20132026', status: 'active',
+    grades: [
+      { label: 'Grade 7',  sections: 2, students: 64,  cap: 90 },
+      { label: 'Grade 8',  sections: 2, students: 58,  cap: 90 },
+      { label: 'Grade 9',  sections: 2, students: 82,  cap: 90 },
+      { label: 'Grade 10', sections: 2, students: 67,  cap: 90 },
+    ]
+  },
+  {
+    sy: 'SY 2024\u20132025', status: 'archived',
+    grades: [
+      { label: 'Grade 7',  sections: 2, students: 61,  cap: 90 },
+      { label: 'Grade 8',  sections: 2, students: 55,  cap: 90 },
+      { label: 'Grade 9',  sections: 2, students: 79,  cap: 90 },
+      { label: 'Grade 10', sections: 2, students: 63,  cap: 90 },
+    ]
+  },
+  {
+    sy: 'SY 2023\u20132024', status: 'archived',
+    grades: [
+      { label: 'Grade 7',  sections: 2, students: 58,  cap: 90 },
+      { label: 'Grade 8',  sections: 2, students: 52,  cap: 90 },
+      { label: 'Grade 9',  sections: 2, students: 74,  cap: 90 },
+      { label: 'Grade 10', sections: 2, students: 60,  cap: 90 },
+    ]
+  },
+];
+
+const gradeArchiveColors = {
+  'Grade 7':  { bg: '#ccfbf1', color: '#0f766e' },
+  'Grade 8':  { bg: '#fef3c7', color: '#b45309' },
+  'Grade 9':  { bg: '#fce7f3', color: '#be185d' },
+  'Grade 10': { bg: '#eff6ff', color: '#1e40af' },
+};
+
+function openSYArchiveModal() {
+  const body = document.getElementById('syArchiveBody');
+  body.innerHTML = _syArchives.map(function(rec) {
+    var isActive = rec.status === 'active';
+    var totalStudents = rec.grades.reduce(function(s,g){ return s+g.students; }, 0);
+    var totalSections = rec.grades.reduce(function(s,g){ return s+g.sections; }, 0);
+    var gradeRows = rec.grades.map(function(g) {
+      var c = gradeArchiveColors[g.label] || { bg: '#f1f5f9', color: '#475569' };
+      var pct = Math.round((g.students / g.cap) * 100);
+      return '<div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid #f1f5f9">' +
+        '<span class="rounded-pill px-2" style="background:'+c.bg+';color:'+c.color+';font-size:11.5px;font-weight:700;white-space:nowrap">'+g.label+'</span>' +
+        '<div class="flex-grow-1">' +
+          '<div class="d-flex justify-content-between mb-1" style="font-size:11.5px;color:#64748b"><span>'+g.sections+' section'+(g.sections>1?'s':'')+'</span><span>'+g.students+' students</span></div>' +
+          '<div style="background:#e2e8f0;border-radius:20px;height:6px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+c.color+';border-radius:20px"></div></div>' +
+        '</div></div>';
+    }).join('');
+    var exportBtn = '<button class="btn btn-sm btn-outline-secondary" onclick="alert(\'Exporting '+rec.sy+' data...\')"><i class="bi bi-download me-1"></i>Export</button>';
+    var reportBtn = !isActive ? '<button class="btn btn-sm ms-2" style="background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe" onclick="alert(\'Viewing '+rec.sy+' report...\')"><i class="bi bi-eye me-1"></i>View Report</button>' : '';
+    return '<div class="card border rounded-3 mb-3 overflow-hidden">' +
+      '<div class="d-flex align-items-center justify-content-between p-3 flex-wrap gap-2" style="background:'+(isActive?'linear-gradient(135deg,#1e3a8a,#0d9488)':'#f8fafc')+';cursor:pointer" onclick="this.nextElementSibling.classList.toggle(\'d-none\')">' +
+        '<div class="d-flex align-items-center gap-3">' +
+          '<div style="width:40px;height:40px;border-radius:10px;background:'+(isActive?'rgba(255,255,255,.18)':'#e2e8f0')+';display:flex;align-items:center;justify-content:center;font-size:18px;color:'+(isActive?'#fff':'#64748b')+'">' +
+            '<i class="bi bi-calendar2-week-fill"></i></div>' +
+          '<div><div class="fw-bold" style="font-size:14.5px;color:'+(isActive?'#fff':'#1e293b')+'">'+rec.sy+'</div>' +
+          '<div style="font-size:12px;color:'+(isActive?'rgba(255,255,255,.7)':'#94a3b8')+'">'+totalSections+' sections &bull; '+totalStudents+' students enrolled</div></div>' +
+        '</div>' +
+        '<span class="badge rounded-pill px-3" style="background:'+(isActive?'rgba(255,255,255,.2)':'#f1f5f9')+';color:'+(isActive?'#fff':'#64748b')+';font-size:11px">'+(isActive?'&#9679; Active':'&#9675; Archived')+'</span>' +
+      '</div>' +
+      '<div class="p-3 d-none">'+gradeRows+
+        '<div class="d-flex gap-2 mt-3 justify-content-end">'+exportBtn+reportBtn+'</div>' +
+      '</div></div>';
+  }).join('');
+  new bootstrap.Modal(document.getElementById('syArchiveModal')).show();
+}
+
+/* ── Auto section (section tab, grade picker) ── */
+const enrolledCounts = { g7:64, g8:58, g9:82, g10:67 };
+const LETTERS = ['A','B','C','D','E','F'];
+const CAP = 45;
+const gradeColors = {
+  g7:  { fill:'fill-teal',  bg:'var(--g7-light)', color:'var(--g7-color)' },
+  g8:  { fill:'fill-amber', bg:'var(--g8-light)', color:'var(--g8-color)' },
+  g9:  { fill:'fill-rose',  bg:'var(--g9-light)', color:'var(--g9-color)' },
+  g10: { fill:'fill-navy',  bg:'var(--g10-light)',color:'var(--g10-color)'},
+};
+
+function triggerAutoSection(gradeId, gradeLabel) {
+  const total = enrolledCounts[gradeId];
+  const n = Math.ceil(total / CAP);
+  const base = Math.floor(total / n);
+  const rem  = total % n;
+  const plan = Array.from({length:n},(_,i)=>({ name:'Section '+LETTERS[i], students: base+(i<rem?1:0) }));
+  const c = gradeColors[gradeId];
+  const wrap = document.getElementById(gradeId+'-sections');
+  wrap.innerHTML = '';
+  plan.forEach(sec => {
+    const pct = Math.round((sec.students/CAP)*100);
+    const row = document.createElement('div');
+    row.className = 'section-row';
+    row.style.cursor = 'pointer';
+    row.title = 'Click to view Master List';
+    row.innerHTML = `
+      <div class="section-top">
+        <div class="section-icon" style="background:${c.bg};color:${c.color}"><i class="bi bi-book-fill"></i></div>
+        <div><div class="section-title">${sec.name}</div></div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:${c.color};background:${c.bg};padding:2px 8px;border-radius:20px"><i class="bi bi-list-ul me-1"></i>Master List</span>
+          <span style="font-size:12px;font-weight:600;color:${c.color};background:${c.bg};padding:2px 10px;border-radius:20px">${sec.students}/${CAP}</span>
+        </div>
+      </div>
+      <div class="cap-row"><span class="cap-label">Capacity</span><span class="cap-value">${sec.students} / ${CAP} students</span></div>
+      <div class="cap-bar"><div class="fill ${c.fill}" style="width:${pct}%"></div></div>`;
+    row.addEventListener('click', function() {
+      openMasterList(gradeLabel, sec.name, sec.students, gradeId);
+    });
+    wrap.appendChild(row);
+  });
+  document.getElementById(gradeId+'-meta').textContent = `${n} Sections • ${total} / ${n*CAP} Students`;
+  document.querySelector(`#${gradeId} .grade-pill-bar .fill`).style.width = Math.round((total/(n*CAP))*100)+'%';
+  document.getElementById(gradeId).classList.add('open');
+  // Close the create-section modal
+  const phpM = document.getElementById('phpModal');
+  const bsM = phpM ? bootstrap.Modal.getInstance(phpM) : null;
+  if (bsM) bsM.hide();
+  setTimeout(() => {
+    showToast(`${n} section(s) created for ${gradeLabel}! Click a section to view Master List.`);
+  }, 300);
+}
+
+/* ── Charts ── */
+let _adminChartsInit = false;
+function initAdminCharts() {
+  if (_adminChartsInit) return;
+  _adminChartsInit = true;
+  new Chart(document.getElementById('barChart'), {
+    type:'bar',
+    data:{ labels:_chartData.gradeLabels, datasets:[{ label:'Students', data:_chartData.gradeData, backgroundColor:'#3b82f6', borderRadius:4, borderSkipped:false }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{color:'#94a3b8',font:{size:11}},grid:{color:'rgba(148,163,184,0.15)'}}, x:{ticks:{color:'#64748b',font:{size:11}},grid:{display:false}} } }
+  });
+  new Chart(document.getElementById('pieChart'), {
+    type:'doughnut',
+    data:{ labels:['Male','Female'], datasets:[{data:[_chartData.male,_chartData.female],backgroundColor:['#1e3a8a','#0d9488'],borderWidth:2,borderColor:'#ffffff'}] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{display:false}} }
+  });
+  new Chart(document.getElementById('appStatusChart'), {
+    type:'doughnut',
+    data:{ labels:['Approved','Pending'], datasets:[{data:[_chartData.statusApproved,_chartData.statusPending],backgroundColor:['#22c55e','#f59e0b'],borderWidth:2,borderColor:'#fff'}] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'55%', plugins:{legend:{position:'bottom',labels:{font:{size:12},padding:14}}} }
+  });
+  new Chart(document.getElementById('trendChart'), {
+    type:'line',
+    data:{ labels:_chartData.trendLabels, datasets:[{ label:'Enrolled', data:_chartData.trendData, borderColor:'#7c3aed', backgroundColor:'rgba(124,58,237,.1)', fill:true, tension:.35, pointBackgroundColor:'#7c3aed', pointRadius:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{color:'#94a3b8',font:{size:11}},grid:{color:'rgba(148,163,184,.15)'}}, x:{ticks:{color:'#64748b',font:{size:11}},grid:{display:false}} } }
+  });
+}
+
+/* ── Master List ── */
+// Sample student roster keyed by gradeId+sectionName
+const _masterListData = {
+  g7_Section_A: [
+    {no:1,lrn:'202600700001',name:'Aguilar, Maria C.',sex:'F',dob:'Mar 12, 2013',age:13,address:'Brgy. Centro, Minalabac'},
+    {no:2,lrn:'202600700002',name:'Bautista, Juan R.',sex:'M',dob:'Jul 5, 2013',age:12,address:'Brgy. Lupi, Naga City'},
+    {no:3,lrn:'202600700003',name:'Cruz, Ana P.',sex:'F',dob:'Jan 20, 2013',age:13,address:'Brgy. Tinalmud, Camaligan'},
+    {no:4,lrn:'202600700004',name:'De Leon, Carlos M.',sex:'M',dob:'Sep 8, 2013',age:12,address:'Brgy. Sabang, Minalabac'},
+    {no:5,lrn:'202600700005',name:'Espiritu, Rosa T.',sex:'F',dob:'Apr 15, 2013',age:13,address:'Brgy. Sta. Cruz, Naga'},
+  ],
+  g7_Section_B: [
+    {no:1,lrn:'202600700031',name:'Flores, Miguel A.',sex:'M',dob:'Feb 11, 2013',age:13,address:'Brgy. Sto. Niño, Naga'},
+    {no:2,lrn:'202600700032',name:'Garcia, Liza M.',sex:'F',dob:'Jun 22, 2013',age:12,address:'Brgy. Peñafrancia, Naga'},
+    {no:3,lrn:'202600700033',name:'Hernandez, Rey B.',sex:'M',dob:'Oct 3, 2013',age:12,address:'Brgy. Pacol, Naga'},
+  ],
+};
+
+function openMasterList(gradeLabel, sectionName, studentCount, gradeId) {
+  const key = gradeId + '_' + sectionName.replace(' ','_');
+  const students = _masterListData[key] || generateSampleStudents(studentCount, gradeLabel, sectionName);
+
+  const gradeColorMap = {
+    kinder:{bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    g1: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    g2: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    g3: {bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
+    g4: {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    g5: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    g6: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    g7: {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    g8: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    g9: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    g10:{bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
+  };
+  const gc = gradeColorMap[gradeId] || {bg:'#f1f5f9',color:'#475569',gradient:'#475569,#1e293b'};
+
+  const rows = students.map(s =>
+    `<tr>
+      <td style="text-align:center;color:#64748b">${s.no}</td>
+      <td style="font-family:monospace;font-size:11.5px;color:#64748b">${s.lrn}</td>
+      <td style="font-weight:600;color:#1e293b">${s.name}</td>
+      <td style="text-align:center">${s.sex}</td>
+      <td style="font-size:12px;color:#475569">${s.dob}</td>
+      <td style="text-align:center">${s.age}</td>
+      <td style="font-size:12px;color:#475569">${s.address}</td>
+    </tr>`
+  ).join('');
+
+  document.getElementById('masterListContent').innerHTML = `
+    <div id="masterListPrintArea">
+      <!-- Print Header -->
+      <div class="print-only" style="text-align:center;margin-bottom:18px">
+        <div style="font-size:13px;font-weight:700;text-transform:uppercase">Premiere Heights Learning Center, Inc.</div>
+        <div style="font-size:11px;color:#475569">Carmona, Cavite</div>
+        <div style="font-size:14px;font-weight:800;margin-top:8px;text-transform:uppercase;letter-spacing:.05em">Class Master List</div>
+        <div style="font-size:12px">${gradeLabel} – ${sectionName} &nbsp;|&nbsp; SY 2025–2026</div>
+        <div style="border-bottom:2px solid #1e293b;margin:10px 0"></div>
+      </div>
+      <!-- Screen Header -->
+      <div class="no-print d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style="background:linear-gradient(135deg,${gc.gradient});color:#fff">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px"><i class="bi bi-list-columns-reverse"></i></div>
+        <div>
+          <div style="font-size:17px;font-weight:800">${gradeLabel} – ${sectionName}</div>
+          <div style="font-size:12px;opacity:.8">SY 2025–2026 &nbsp;|&nbsp; ${students.length} students enrolled</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table style="width:100%;border-collapse:collapse;font-size:13px" class="master-table">
+          <thead>
+            <tr style="background:#1e3a8a;color:#fff">
+              <th style="padding:9px 10px;text-align:center;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;width:42px">#</th>
+              <th style="padding:9px 10px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">LRN</th>
+              <th style="padding:9px 10px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em">Student Name</th>
+              <th style="padding:9px 10px;text-align:center;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;width:50px">Sex</th>
+              <th style="padding:9px 10px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Date of Birth</th>
+              <th style="padding:9px 10px;text-align:center;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;width:50px">Age</th>
+              <th style="padding:9px 10px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em">Address</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <!-- Print footer -->
+      <div class="print-only" style="margin-top:32px;display:flex;justify-content:space-between;font-size:11px">
+        <div>Prepared by: _______________________<br>Class Adviser<br>Date: _______________</div>
+        <div style="text-align:right">Noted by: _______________________<br>School Principal<br>Date: _______________</div>
+      </div>
+    </div>`;
+
+  // inject print styles
+  if (!document.getElementById('masterPrintStyle')) {
+    const s = document.createElement('style');
+    s.id = 'masterPrintStyle';
+    s.textContent = `
+      @media print {
+        body > *:not(#masterListModal) { display:none !important; }
+        #masterListModal { position:static !important; display:block !important; }
+        .modal-dialog { max-width:100% !important; margin:0 !important; }
+        .modal-content { box-shadow:none !important; border:none !important; }
+        .no-print, .modal-header, .modal-footer { display:none !important; }
+        .print-only { display:block !important; }
+        .master-table tbody tr:nth-child(even) { background:#f8fafc; }
+        .master-table td, .master-table th { border:1px solid #e2e8f0; }
+      }
+      .print-only { display:none; }
+      .master-table tbody tr:nth-child(even) { background:#f8fafc; }
+      .master-table td { padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  new bootstrap.Modal(document.getElementById('masterListModal')).show();
+}
+
+function generateSampleStudents(count, gradeLabel, sectionName) {
+  const lastNames = ['Reyes','Santos','Cruz','Bautista','Garcia','Torres','Flores','Ramos','Lopez','Hernandez','Dela Cruz','Mendoza','Villanueva','Castillo','Aquino'];
+  const firstNames = ['Juan','Maria','Jose','Ana','Carlos','Rosa','Miguel','Liza','Pedro','Elena','Rico','Clara','Diego','Sophia','Marco'];
+  const arr = [];
+  for (let i=0;i<count;i++) {
+    const ln = lastNames[i % lastNames.length];
+    const fn = firstNames[(i+3) % firstNames.length];
+    const mi = String.fromCharCode(65+(i%26));
+    const yr = 2013 - Math.floor(i/15);
+    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i%12];
+    const day = (i%28)+1;
+    arr.push({no:i+1, lrn:'20260'+gradeLabel.slice(-1)+'0'+String(i+1).padStart(5,'0'), name:`${ln}, ${fn} ${mi}.`, sex:i %2===0?'M':'F', dob:`${mo} ${day}, ${yr}`, age:2026-yr, address:`Brgy. ${lastNames[(i+5)%lastNames.length]}, Minalabac`});
+  }
+  return arr;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const modalParam = urlParams.get('modal');
+  if (modalParam === 'addStudent' || modalParam === 'export' || modalParam === 'transfer') {
+    sessionStorage.setItem('adminTab', 'students');
+  } else if (modalParam === 'profile') {
+    // Stay on applications if opened from an application, students if opened from a student record
+    if (urlParams.get('app_id')) {
+      sessionStorage.setItem('adminTab', 'applications');
+    } else {
+      sessionStorage.setItem('adminTab', 'students');
+    }
+  } else if (modalParam === 'createSection') {
+    sessionStorage.setItem('adminTab', 'sections');
+  }
+  if (urlParams.get('app_page')) sessionStorage.setItem('adminTab', 'applications');
+  if (urlParams.get('stu_page')) sessionStorage.setItem('adminTab', 'students');
+  if (urlParams.get('tab')) sessionStorage.setItem('adminTab', urlParams.get('tab'));
+
+  // Restore saved tab
+  var savedTab = sessionStorage.getItem('adminTab') || 'statistics';
+  switchAdminTab(savedTab, null);
+
+  // Auto-open modal if ?modal= is set
+  const m = document.getElementById('phpModal');
+  if (m) { new bootstrap.Modal(m).show(); }
+});
+</script>
+
+<!-- ===================== MODAL: MASTER LIST ===================== -->
+<div class="modal fade" id="masterListModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      <div class="modal-header border-0 px-4 pt-4 pb-2 no-print">
+        <div class="d-flex align-items-center gap-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:#1e3a8a;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">
+            <i class="bi bi-list-columns-reverse"></i>
+          </div>
+          <div>
+            <h5 class="modal-title fw-bold mb-0" style="color:#1e293b">Class Master List</h5>
+            <div class="text-muted" style="font-size:12px">SY 2025–2026 &nbsp;|&nbsp; PHLCI</div>
+          </div>
+        </div>
+        <div class="d-flex gap-2 align-items-center ms-auto">
+          <button class="btn btn-sm fw-semibold px-3" style="background:#1e3a8a;color:#fff" onclick="window.print()">
+            <i class="bi bi-printer-fill me-1"></i>Print Master List
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body px-4 pb-4" id="masterListContent">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
