@@ -9,7 +9,7 @@ set -e
 # instead of mangling an already-substituted port.
 PORT="${PORT:-80}"
 sed -i "s/Listen [0-9]*/Listen ${PORT}/" /etc/apache2/ports.conf
-sed -i "s/<VirtualHost \*:[0-9]*>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
+sed -i "s/<VirtualHost \*:[0-9]*>/<VirtualHost *:${PORT}>/g" /etc/apache2/sites-available/000-default.conf
 
 if [ -z "${APP_KEY:-}" ]; then
     echo "FATAL: APP_KEY is not set. Generate one locally with 'php artisan key:generate --show' and set it in Railway's environment variables." >&2
