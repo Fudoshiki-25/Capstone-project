@@ -2,10 +2,14 @@
 set -e
 
 # Railway assigns a random $PORT at runtime — Apache must listen on it,
-# not the hardcoded 80 baked in at build time.
+# not the hardcoded 80 baked in at build time. Matching [0-9]* (not a literal
+# "80") makes this idempotent if the entrypoint ever runs twice against the
+# same container filesystem (e.g. a restart that reuses the writable layer
+# instead of rebuilding from the image) — re-running it is then a no-op
+# instead of mangling an already-substituted port.
 PORT="${PORT:-80}"
-sed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf
-sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
+sed -i "s/Listen [0-9]*/Listen ${PORT}/" /etc/apache2/ports.conf
+sed -i "s/<VirtualHost \*:[0-9]*>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
 if [ -z "${APP_KEY:-}" ]; then
     echo "FATAL: APP_KEY is not set. Generate one locally with 'php artisan key:generate --show' and set it in Railway's environment variables." >&2
