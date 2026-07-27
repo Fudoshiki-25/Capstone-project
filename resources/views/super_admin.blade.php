@@ -1367,7 +1367,7 @@ function renderAnnouncements() {
             ${a.popup ? '<span class="badge rounded-pill px-2" style="background:#ede9fe;color:#7c3aed;font-size:11px"><i class="bi bi-bell-fill"></i> Popup</span>' : ''}
           </div>
           <div class="text-muted mb-2" style="font-size:13px">${escapeHtml(a.message)}</div>
-          <div class="text-muted" style="font-size:11.5px"><i class="bi bi-calendar3 me-1"></i>${a.from} – ${a.until} &nbsp;&bull;&nbsp; Created by: ${escapeHtml(a.by)} &nbsp;&bull;&nbsp; ${a.date}</div>
+          <div class="text-muted" style="font-size:11.5px">${(a.from || a.until) ? `<i class="bi bi-calendar3 me-1"></i>${a.from || 'Anytime'} – ${a.until || 'Anytime'} &nbsp;&bull;&nbsp; ` : ''}Created by: ${escapeHtml(a.by)} &nbsp;&bull;&nbsp; ${a.date}</div>
         </div>
         <div class="d-flex gap-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" onclick="openEditAnnouncementModal(${a.id})" title="Edit"><i class="bi bi-pencil"></i></button>

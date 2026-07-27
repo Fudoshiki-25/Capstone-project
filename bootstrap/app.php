@@ -14,6 +14,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // Redirect to login when unauthenticated
         $middleware->redirectGuestsTo(fn () => route('login'));
 
+        // Railway (and most PaaS hosts) terminate TLS at a reverse proxy and
+        // forward plain HTTP internally — without trusting that proxy's
+        // X-Forwarded-* headers, Laravel thinks every request is HTTP, which
+        // breaks secure cookies and generates http:// URLs behind an https:// site.
+        $middleware->trustProxies(at: '*');
+
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 
         $middleware->alias([

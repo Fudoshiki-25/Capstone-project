@@ -347,6 +347,110 @@ class EnrollmentController extends Controller
     }
 
     /**
+     * GET /admin/students/export
+     * Streams a CSV of every approved/enrolled student, optionally filtered
+     * by grade level and school year (school year is accepted for the
+     * filter UI but there's no per-enrollment school-year column yet, so it
+     * currently has no effect on the result set).
+     */
+    public function export(Request $request)
+    {
+        $query = StudentEnrollment::with('section')
+            ->whereIn('status', ['approved', 'enrolled'])
+            ->when($request->filled('grade_level'), fn ($q) => $q->where('grade_level', $request->input('grade_level')))
+            ->orderBy('last_name');
+
+        $filename = 'students_' . now()->format('Y-m-d_His') . '.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Last Name', 'First Name', 'Middle Name', 'Grade Level', 'Section', 'Session', 'Status', 'LRN', 'Birthday']);
+
+            $query->chunk(200, function ($chunk) use ($out) {
+                foreach ($chunk as $s) {
+                    fputcsv($out, [
+                        $s->last_name,
+                        $s->first_name,
+                        $s->middle_name,
+                        $s->grade_level,
+                        $s->section->name ?? '—',
+                        $s->preferred_session,
+                        ucfirst($s->status),
+                        $s->lrn,
+                        optional($s->birthday)->format('Y-m-d'),
+                    ]);
+                }
+            });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * POST /admin/students
+     * "Add Student – Late Enrollment": admin directly creates an already-
+     * approved enrollment for a student whose parent already has an
+     * account (skips the parent-facing Step 1/2 form and document review).
+     * Fields the modal doesn't collect (address, parent names, emergency
+     * contact, session, payment method) get placeholder defaults, same
+     * convention as the 'N/A' placeholders used in store()/update() above —
+     * the parent or admin can fill in real values later via the normal
+     * edit flow.
+     */
+    public function adminStore(Request $request)
+    {
+        $validated = $request->validate([
+            'grade_level' => 'required|string|max:20',
+            'last_name'   => 'required|string|max:100',
+            'first_name'  => 'required|string|max:100',
+            'middle_name' => 'nullable|string|max:100',
+            'birthday'    => 'required|date',
+            'email'       => 'required|email',
+        ]);
+
+        $parent = \App\Models\Parents::where('email', $validated['email'])->first();
+
+        if (! $parent) {
+            return response()->json([
+                'message' => 'No parent account found with that email. The parent needs to register an account before a student can be added under it.',
+            ], 422);
+        }
+
+        $enrollment = StudentEnrollment::create([
+            'user_id'           => $parent->id,
+            'first_name'        => $validated['first_name'],
+            'middle_name'       => $validated['middle_name'] ?: 'N/A',
+            'last_name'         => $validated['last_name'],
+            'suffix'            => 'N/A',
+            'lrn'               => 'N/A',
+            'grade_level'       => $validated['grade_level'],
+            'student_type'      => 'new',
+            'birthday'          => $validated['birthday'],
+            'birth_place'       => 'N/A',
+            'address'           => 'N/A',
+            'mother_name'       => 'N/A',
+            'father_name'       => 'N/A',
+            'guardian_name'     => 'N/A',
+            'emergency_contact' => 'N/A',
+            'preferred_session' => 'AM',
+            'payment_method'    => 'cash',
+            'status'            => 'approved',
+        ]);
+
+        \App\Models\ActivityLog::record(
+            $request->user(),
+            'Added Student (Late Enrollment)',
+            trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' (' . $enrollment->grade_level . ')',
+            'success'
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' has been enrolled.',
+        ], 201);
+    }
+
+    /**
      * PATCH /admin/applications/{enrollment}/approve
      * Admin approves a pending application. This is the transition that
      * makes the student eligible for sectioning (SectionController::generate

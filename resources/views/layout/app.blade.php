@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>@yield('title', 'Premiere Heights Learning Center, Inc. â€“ Online Enrollment System')</title>
+<title>@yield('title', 'Premiere Heights Learning Center, Inc. – Online Enrollment System')</title>
   <link href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet"/>
   <link href="{{ asset('vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet"/>
   {{-- Single recaptcha load — the render= variant is for v3; the plain one is for v2 checkbox. Keep only ONE. --}}

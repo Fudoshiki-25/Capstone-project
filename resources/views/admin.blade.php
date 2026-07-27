@@ -12,6 +12,9 @@ $modal   = request('modal',   '');
 $stuId   = request('stu_id',  '');
 $stuName = request('stu_name','');
 
+$transferStudent = ($modal === 'transfer' && $stuId) ? StudentEnrollment::find($stuId) : null;
+$gradeLevelOptions = ['Kinder','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10'];
+
 /* ── Real DB data ── */
 $applications = StudentEnrollment::with('user')
     ->where('status', 'pending')
@@ -764,6 +767,9 @@ body { margin:0; background:#f1f5f9; }
                         <a class="action-item" href="?modal=profile&app_id={{ $stu->id }}">
                           <i class="bi bi-eye text-navy"></i> View Profile
                         </a>
+                        <a class="action-item" href="?modal=transfer&stu_id={{ $stu->id }}&stu_name={{ urlencode(trim($stu->first_name.' '.$stu->last_name)) }}">
+                          <i class="bi bi-arrow-left-right text-navy"></i> Transfer Section
+                        </a>
                       </div>
                     </div>
                   </td>
@@ -1296,26 +1302,23 @@ body { margin:0; background:#f1f5f9; }
         <a href="{{ route('admin.dashboard') }}" class="btn-close" aria-label="Close"></a>
       </div>
       <div class="modal-body">
+        <div class="alert alert-warning py-2 mb-3" style="font-size:12.5px"><i class="bi bi-info-circle me-1"></i>The parent must already have an account under the given email — this only creates the student's enrollment record, not a parent account.</div>
         <div class="fw-semibold mb-2 mt-1" style="font-size:13.5px;color:#1e293b;border-left:3px solid var(--navy);padding-left:10px">School Information</div>
         <div class="row g-3 mb-3">
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">School Year *</label><input type="text" class="form-control" value="2025-2026"></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Grade Level *</label><select class="form-select" id="addStudentGrade"><option value="">Select grade level</option><option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option></select></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Section *</label><input type="text" class="form-control" placeholder="e.g., Section A"></div>
+          <div class="col-md-6"><label class="form-label fw-medium" style="font-size:13px">Grade Level *</label><select class="form-select" id="addStudentGrade"><option value="">Select grade level</option>@foreach($gradeLevelOptions as $g)<option>{{ $g }}</option>@endforeach</select></div>
+          <div class="col-md-6"><label class="form-label fw-medium" style="font-size:13px">Parent's Email *</label><input type="email" class="form-control" id="addStudentEmail" placeholder="parent@email.com"></div>
         </div>
         <div class="fw-semibold mb-2" style="font-size:13.5px;color:#1e293b;border-left:3px solid var(--navy);padding-left:10px">Learner Information</div>
         <div class="row g-3 mb-3">
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Last Name *</label><input type="text" class="form-control" placeholder="Last Name"></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">First Name *</label><input type="text" class="form-control" placeholder="First Name"></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Middle Name</label><input type="text" class="form-control" placeholder="Middle Name"></div>
-          <div class="col-md-3"><label class="form-label fw-medium" style="font-size:13px">Date of Birth *</label><input type="date" class="form-control"></div>
-          <div class="col-md-2"><label class="form-label fw-medium" style="font-size:13px">Age *</label><input type="number" class="form-control" placeholder="Age"></div>
-          <div class="col-md-3"><label class="form-label fw-medium d-block" style="font-size:13px">Sex *</label><div class="d-flex gap-4 mt-1"><label><input type="radio" name="as-sex" value="Male"> Male</label><label><input type="radio" name="as-sex" value="Female"> Female</label></div></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Email *</label><input type="email" class="form-control" placeholder="student@email.com"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Last Name *</label><input type="text" class="form-control" id="addStudentLast" placeholder="Last Name"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">First Name *</label><input type="text" class="form-control" id="addStudentFirst" placeholder="First Name"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Middle Name</label><input type="text" class="form-control" id="addStudentMiddle" placeholder="Middle Name"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Date of Birth *</label><input type="date" class="form-control" id="addStudentDob"></div>
         </div>
       </div>
       <div class="modal-footer border-0 pt-0">
         <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
-        <button class="btn btn-navy btn-sm fw-semibold" onclick="showToast('Student enrolled successfully!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1600)">
+        <button class="btn btn-navy btn-sm fw-semibold" id="addStudentSubmitBtn" onclick="submitAddStudent(this)">
           <i class="bi bi-person-check me-1"></i>Enroll Student
         </button>
       </div>
@@ -1333,13 +1336,12 @@ body { margin:0; background:#f1f5f9; }
         <a href="{{ route('admin.dashboard') }}" class="btn-close" aria-label="Close"></a>
       </div>
       <div class="modal-body">
-        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">School Year</label><select class="form-select"><option>2025–2026</option><option>2024–2025</option></select></div>
-        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Grade Level</label><select class="form-select"><option value="">All Grades</option><option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option><option>Grade 4</option><option>Grade 5</option><option>Grade 6</option><option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option></select></div>
-        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Format</label><select class="form-select"><option>CSV (.csv)</option><option>Excel (.xlsx)</option><option>PDF (.pdf)</option></select></div>
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Grade Level</label><select class="form-select" id="exportGrade"><option value="">All Grades</option>@foreach($gradeLevelOptions as $g)<option>{{ $g }}</option>@endforeach</select></div>
+        <div class="form-text" style="font-size:12px">Downloads a CSV of every approved/enrolled student matching this filter.</div>
       </div>
       <div class="modal-footer border-0 pt-0">
         <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
-        <button class="btn btn-navy btn-sm fw-semibold" onclick="showToast('Export started!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1600)"><i class="bi bi-download me-1"></i>Export Now</button>
+        <a class="btn btn-navy btn-sm fw-semibold" id="exportNowBtn" href="#" onclick="startExport(this);return false;"><i class="bi bi-download me-1"></i>Export Now</a>
       </div>
     </div>
   </div>
@@ -1361,24 +1363,34 @@ body { margin:0; background:#f1f5f9; }
         </div>
       </div>
       <div class="modal-body p-4">
+        @if(!$transferStudent)
+        <div class="alert alert-danger py-2 mb-0" style="font-size:13px"><i class="bi bi-exclamation-triangle me-1"></i>Student not found.</div>
+        @else
         <div class="alert alert-info py-2 mb-3" style="font-size:13px">
-          <i class="bi bi-info-circle me-1"></i>Transferring: <strong>{{ $stuName }}</strong>
+          <i class="bi bi-info-circle me-1"></i>Transferring: <strong>{{ $stuName }}</strong> &nbsp;•&nbsp; Currently: <strong>{{ $transferStudent->grade_level }}{{ $transferStudent->section ? ' – '.$transferStudent->section->name : ' (unsectioned)' }}</strong>
         </div>
         <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">New Grade Level *</label>
-          <select class="form-select" disabled><option selected>Grade 7</option></select>
+          <select class="form-select" id="transferGrade">
+            @foreach($gradeLevelOptions as $g)
+              <option @selected($g === $transferStudent->grade_level)>{{ $g }}</option>
+            @endforeach
+          </select>
         </div>
-        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">New Section *</label>
-          <input type="text" class="form-control" placeholder="e.g., Section B">
+        <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">New Section</label>
+          <input type="text" class="form-control" id="transferSection" placeholder="e.g., Section B — leave blank to await Generate Sections">
         </div>
         <div class="mb-3"><label class="form-label fw-medium" style="font-size:13px">Reason</label>
-          <textarea class="form-control" rows="2" placeholder="Optional reason..."></textarea>
+          <textarea class="form-control" id="transferReason" rows="2" placeholder="Optional reason..."></textarea>
         </div>
+        @endif
       </div>
       <div class="modal-footer border-0 pt-0 px-4 pb-4">
         <a href="{{ route('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
-        <button class="btn btn-navy btn-sm fw-semibold px-4" onclick="showToast('{{ addslashes($stuName) }} transferred successfully!');setTimeout(()=>window.location='{{ route("admin.dashboard") }}',1800)">
+        @if($transferStudent)
+        <button class="btn btn-navy btn-sm fw-semibold px-4" id="transferSubmitBtn" onclick="submitTransfer(this, {{ $transferStudent->id }})">
           <i class="bi bi-check-circle me-1"></i>Confirm Transfer
         </button>
+        @endif
       </div>
     </div>
   </div>
@@ -1514,6 +1526,67 @@ function generateSections(gradeLevel, btn) {
     .catch(() => {
       dpnhsToast('Could not generate sections. Please try again.', 'error');
       if (btn) btn.disabled = false;
+    });
+}
+
+/* ── Add Student (late enrollment) ── */
+function submitAddStudent(btn) {
+  const grade  = document.getElementById('addStudentGrade').value;
+  const email  = document.getElementById('addStudentEmail').value.trim();
+  const last   = document.getElementById('addStudentLast').value.trim();
+  const first  = document.getElementById('addStudentFirst').value.trim();
+  const middle = document.getElementById('addStudentMiddle').value.trim();
+  const dob    = document.getElementById('addStudentDob').value;
+
+  if (!grade || !email || !last || !first || !dob) {
+    dpnhsToast('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  apiFetch('{{ route("admin.students.store") }}', 'POST', {
+    grade_level: grade, email, last_name: last, first_name: first, middle_name: middle, birthday: dob,
+  })
+    .then(data => {
+      dpnhsToast(data.message || 'Student enrolled successfully!', 'success');
+      setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=students'; }, 1200);
+    })
+    .catch(async err => {
+      let message = 'Could not add student. Please try again.';
+      try { message = JSON.parse(err.message).message || message; } catch (e) {}
+      dpnhsToast(message, 'error');
+      btn.disabled = false;
+    });
+}
+
+/* ── Export students to CSV ── */
+function startExport(link) {
+  const grade = document.getElementById('exportGrade').value;
+  const url = '{{ route("admin.students.export") }}' + (grade ? '?grade_level=' + encodeURIComponent(grade) : '');
+  window.location = url;
+  dpnhsToast('Export started — your download will begin shortly.', 'success');
+  setTimeout(() => { window.location = '{{ route("admin.dashboard") }}'; }, 1200);
+}
+
+/* ── Transfer Section ── */
+function submitTransfer(btn, enrollmentId) {
+  const grade   = document.getElementById('transferGrade').value;
+  const section = document.getElementById('transferSection').value.trim();
+  const reason  = document.getElementById('transferReason').value.trim();
+
+  btn.disabled = true;
+  apiFetch(`/admin/students/${enrollmentId}/transfer`, 'PATCH', {
+    grade_level: grade, section_name: section, reason,
+  })
+    .then(data => {
+      dpnhsToast(data.message || 'Transferred successfully!', 'success');
+      setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=students'; }, 1200);
+    })
+    .catch(async err => {
+      let message = 'Could not transfer student. Please try again.';
+      try { message = JSON.parse(err.message).message || message; } catch (e) {}
+      dpnhsToast(message, 'error');
+      btn.disabled = false;
     });
 }
 

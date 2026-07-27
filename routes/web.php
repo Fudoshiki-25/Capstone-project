@@ -77,6 +77,11 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
     // Sections
     Route::get('/admin/sections', [SectionController::class, 'index'])->name('admin.sections.index');
     Route::post('/admin/sections/generate', [SectionController::class, 'generate'])->name('admin.sections.generate');
+    Route::patch('/admin/students/{enrollment}/transfer', [SectionController::class, 'transfer'])->name('admin.students.transfer');
+
+    // Students
+    Route::get('/admin/students/export', [EnrollmentController::class, 'export'])->name('admin.students.export');
+    Route::post('/admin/students', [EnrollmentController::class, 'adminStore'])->name('admin.students.store');
 
     // Tuition verification
     Route::post('/admin/tuition/payments/{payment}/verify', [TuitionController::class, 'verify'])->name('admin.tuition.verify');

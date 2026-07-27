@@ -93,4 +93,61 @@ class SectionController extends Controller
 
         return response()->json(['sections' => $sections]);
     }
+
+    /**
+     * PATCH /admin/students/{enrollment}/transfer
+     * Moves an already-placed (approved/enrolled) student to a different
+     * grade level and/or section. Giving a section name finds-or-creates
+     * that section (same convention as generate()) and marks the student
+     * 'enrolled'; leaving it blank drops the student back to 'approved',
+     * awaiting the next Generate Sections run for the new grade.
+     */
+    public function transfer(Request $request, StudentEnrollment $enrollment)
+    {
+        $request->validate([
+            'grade_level'  => 'required|string|max:20',
+            'section_name' => 'nullable|string|max:100',
+            'reason'       => 'nullable|string|max:500',
+        ]);
+
+        if (! in_array($enrollment->status, ['approved', 'enrolled'], true)) {
+            return response()->json([
+                'message' => 'Only approved or enrolled students can be transferred.',
+            ], 422);
+        }
+
+        $gradeLevel  = $request->input('grade_level');
+        $sectionName = trim((string) $request->input('section_name'));
+
+        if ($sectionName !== '') {
+            $section = Section::firstOrCreate([
+                'grade_level' => $gradeLevel,
+                'name'        => $sectionName,
+            ]);
+
+            $enrollment->update([
+                'grade_level' => $gradeLevel,
+                'section_id'  => $section->id,
+                'status'      => 'enrolled',
+            ]);
+        } else {
+            $enrollment->update([
+                'grade_level' => $gradeLevel,
+                'section_id'  => null,
+                'status'      => 'approved',
+            ]);
+        }
+
+        \App\Models\ActivityLog::record(
+            $request->user(),
+            'Transferred Student',
+            trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' → ' . $gradeLevel . ($sectionName !== '' ? ' (' . $sectionName . ')' : ''),
+            'success'
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' transferred successfully.',
+        ]);
+    }
 }
