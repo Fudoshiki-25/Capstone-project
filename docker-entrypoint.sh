@@ -8,7 +8,13 @@ sed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
 if [ -z "${APP_KEY:-}" ]; then
-    echo "WARNING: APP_KEY is not set. Set it in Railway's environment variables (generate one with 'php artisan key:generate --show')." >&2
+    echo "FATAL: APP_KEY is not set. Generate one locally with 'php artisan key:generate --show' and set it in Railway's environment variables." >&2
+    exit 1
+fi
+
+if [ "${DB_CONNECTION:-}" != "mysql" ]; then
+    echo "FATAL: DB_CONNECTION is '${DB_CONNECTION:-unset}', not 'mysql'. Add a MySQL service in Railway and set DB_CONNECTION=mysql plus DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD from it — the migrations use MySQL-only syntax and will fail against sqlite." >&2
+    exit 1
 fi
 
 # Idempotent: skip if the symlink already exists (re-running on every deploy is fine either way).
