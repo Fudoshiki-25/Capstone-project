@@ -15,7 +15,10 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
     && docker-php-ext-install -j$(nproc) pdo_mysql gd exif mbstring bcmath zip \
     && a2enmod rewrite \
-    && a2dismod mpm_event 2>/dev/null; a2enmod mpm_prefork \
+    && (a2dismod mpm_event || true) \
+    && (a2dismod mpm_worker || true) \
+    && a2enmod mpm_prefork \
+    && echo "=== enabled mpm modules ===" && ls -la /etc/apache2/mods-enabled/ | grep -i mpm \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
