@@ -31,6 +31,7 @@ class StudentEnrollment extends Model
         'payment_method',
         'payment_plan',
         'proof_of_payment',
+        'photo',
         'status',
     ];
 
@@ -57,6 +58,14 @@ class StudentEnrollment extends Model
     public function section(): BelongsTo
     {
         return $this->belongsTo(Section::class, 'section_id');
+    }
+
+    /**
+     * Public URL for the child's uploaded photo, or null if none set.
+     */
+    public function getPhotoUrlAttribute(): ?string
+    {
+        return $this->photo ? \Illuminate\Support\Facades\Storage::url($this->photo) : null;
     }
 
     public function tuitionPlan(): \Illuminate\Database\Eloquent\Relations\HasOne

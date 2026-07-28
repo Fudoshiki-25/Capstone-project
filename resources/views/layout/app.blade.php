@@ -516,7 +516,9 @@ img.brand-logo {
   background: var(--navy-light); display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-weight: 700; color: var(--navy);
   cursor: pointer; border: 2px dashed var(--gold); position: relative;
+  overflow: hidden;
 }
+.stu-profile-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .stu-profile-avatar:hover::after {
   content: 'Upload'; position: absolute; inset: 0;
   background: rgba(26,42,94,.45); border-radius: 50%;

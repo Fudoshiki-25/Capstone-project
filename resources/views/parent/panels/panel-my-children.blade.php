@@ -46,7 +46,14 @@
            class="child-profile-pane {{ $i !== 0 ? 'd-none' : '' }}" style="max-width:780px;margin:0 auto">
         <div class="card border rounded-3 p-4 mb-4">
           <div class="d-flex align-items-center gap-4">
-            <div class="stu-profile-avatar" style="width:72px;height:72px;font-size:26px">{{ $ci2 }}</div>
+            <label class="stu-profile-avatar" style="width:72px;height:72px;font-size:26px" title="Click to upload photo">
+              @if($child->photo_url)
+                <img src="{{ $child->photo_url }}" alt="{{ $child->first_name }}">
+              @else
+                {{ $ci2 }}
+              @endif
+              <input type="file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="handleChildPhotoUpload(this, {{ $child->id }})">
+            </label>
             <div>
               <div class="fw-bold" style="font-size:20px;color:#1e293b">{{ $child->first_name }} {{ $child->last_name }}</div>
               <div class="text-muted" style="font-size:13px">LRN: <span class="fw-semibold text-dark">{{ $child->lrn ?? 'N/A' }}</span></div>
@@ -138,9 +145,9 @@
                   @endif
                 </div>
                 @if($doc)
-                  <a href="{{ $doc->url }}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:12px">
+                  <button type="button" onclick="viewDocument('{{ $doc->url }}', '{{ addslashes($docLabels[$docType]) }}')" class="btn btn-sm btn-outline-secondary" style="font-size:12px">
                     <i class="bi bi-eye me-1"></i>View
-                  </a>
+                  </button>
                 @else
                   <span class="badge bg-secondary-subtle text-secondary" style="font-size:11px">Pending</span>
                 @endif

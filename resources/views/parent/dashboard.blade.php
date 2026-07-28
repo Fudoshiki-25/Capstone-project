@@ -74,6 +74,7 @@
   </div><!-- /main -->
 
   @include('parent.modals.enrollment-announcement')
+  @include('parent.modals.document-view')
 </div>
 
 @endsection

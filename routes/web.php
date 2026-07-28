@@ -40,6 +40,8 @@ Route::middleware(['auth:parent'])->group(function () {
     Route::put('/enrollment/{enrollment}',         [EnrollmentController::class, 'update'])->name('enrollment.update');
     Route::post('/enrollment/{enrollment}/finalize', [EnrollmentController::class, 'finalize'])->name('enrollment.finalize');
     Route::delete('/enrollment/{enrollment}',      [EnrollmentController::class, 'destroy'])->name('enrollment.destroy');
+    Route::post('/children/{enrollment}/photo',    [EnrollmentController::class, 'uploadPhoto'])->name('children.photo.upload');
+    Route::delete('/children/{enrollment}/photo',  [EnrollmentController::class, 'removePhoto'])->name('children.photo.remove');
 
     // Requirements AJAX routes (used in parent.blade.php)
     Route::get('/requirements',         [RequirementsController::class, 'index'])->name('requirements.index');

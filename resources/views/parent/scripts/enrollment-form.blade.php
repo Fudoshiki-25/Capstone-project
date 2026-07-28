@@ -70,6 +70,31 @@ function showPaymentFileName(input) {
   }
 }
 
+// Images preview in-page via documentViewModal; PDFs still open in a new tab
+// since a plain <img> can't render one.
+function viewDocument(url, label) {
+  if (/\.pdf($|\?)/i.test(url)) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  document.getElementById('documentViewModalImg').src = url;
+  document.getElementById('documentViewModalLabel').textContent = label || 'Document Preview';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('documentViewModal')).show();
+}
+
+function removePaymentProof() {
+  var input = document.querySelector('#proofUploadBlock input[type="file"]');
+  if (input) input.value = '';
+
+  var fn = document.getElementById('paymentFileName');
+  if (fn) fn.textContent = '';
+
+  var preview = document.getElementById('payProofPreview');
+  var img = document.getElementById('payProofImg');
+  if (preview) preview.style.display = 'none';
+  if (img) img.src = '';
+}
+
 // NOTE: getCsrfToken() lives in navigation.blade.php (shared helper).
 
 // ── Load an existing draft into the form ────────────────────────────────────
@@ -393,7 +418,7 @@ function buildDocRow(docType, accentColor, uploadedInfo) {
   }
 
   if (uploaded && uploaded.url) {
-    viewBtn = '<a href="' + uploaded.url + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary fw-semibold me-1" style="font-size:12px" title="View uploaded file"><i class="bi bi-eye me-1"></i>View</a>';
+    viewBtn = '<button type="button" onclick="viewDocument(\'' + uploaded.url + '\',\'' + label.replace(/'/g, "") + '\')" class="btn btn-sm btn-outline-secondary fw-semibold me-1" style="font-size:12px" title="View uploaded file"><i class="bi bi-eye me-1"></i>View</button>';
   }
 
   return '<div class="d-flex align-items-center justify-content-between p-3 rounded-2" id="' + rowId + '" style="background:#f8fafc;border:1px solid ' + (needsResubmit ? '#fecaca' : '#e2e8f0') + '"><div style="flex:1;min-width:0"><div class="fw-medium" style="font-size:13.5px;color:#1e293b">' + label + '</div><div class="mt-1">' + subInfo + '</div>' + feedbackHtml + '</div><div class="ms-2 flex-shrink-0 d-flex align-items-center"><div id="spinner-' + docType + '" class="spinner-border spinner-border-sm text-secondary d-none me-1" style="width:16px;height:16px"></div>' + viewBtn + actionBtn + '</div></div>';
@@ -464,6 +489,40 @@ function handleDocUpload(input, docType) {
     }
   })
   .catch(() => { if (spinner) spinner.classList.add('d-none'); showToast('danger', 'An error occurred. Please try again.'); });
+}
+
+// ── Child photo upload (My Children panel avatar) ───────────────────────────
+function handleChildPhotoUpload(input, enrollmentId) {
+  if (!input.files || !input.files[0]) return;
+  var avatar = input.closest('.stu-profile-avatar');
+
+  var formData = new FormData();
+  formData.append('photo', input.files[0]);
+
+  fetch('/children/' + enrollmentId + '/photo', {
+    method: 'POST',
+    headers: { 'X-CSRF-TOKEN': getCsrfToken(), 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+    body: formData,
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      if (avatar) {
+        var img = avatar.querySelector('img');
+        if (!img) {
+          img = document.createElement('img');
+          avatar.insertBefore(img, avatar.firstChild);
+          avatar.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ''; });
+        }
+        img.src = data.url;
+      }
+      showToast('success', data.message || 'Photo updated.');
+    } else {
+      showToast('danger', data.message || 'Upload failed.');
+    }
+    input.value = '';
+  })
+  .catch(() => { showToast('danger', 'An error occurred. Please try again.'); input.value = ''; });
 }
 
 // ── Enroll Now button state ─────────────────────────────────────────────────

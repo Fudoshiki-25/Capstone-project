@@ -478,4 +478,60 @@ class EnrollmentController extends Controller
             'message' => trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' has been approved.',
         ]);
     }
+
+    /**
+     * POST /children/{enrollment}/photo
+     * Uploads (or replaces) the child's profile photo, shown in the My Children panel.
+     */
+    public function uploadPhoto(Request $request, StudentEnrollment $enrollment)
+    {
+        $parent = Auth::guard('parent')->user();
+
+        if ($enrollment->user_id !== $parent->id) {
+            abort(403, 'You do not have permission to update this child\'s photo.');
+        }
+
+        $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        if ($enrollment->photo && Storage::disk('public')->exists($enrollment->photo)) {
+            Storage::disk('public')->delete($enrollment->photo);
+        }
+
+        $path = ImageUploadStorer::store($request->file('photo'), 'child-photos', 'public', maxWidth: 500);
+
+        $enrollment->photo = $path;
+        $enrollment->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Photo updated.',
+            'url'     => $enrollment->photo_url,
+        ]);
+    }
+
+    /**
+     * DELETE /children/{enrollment}/photo
+     */
+    public function removePhoto(Request $request, StudentEnrollment $enrollment)
+    {
+        $parent = Auth::guard('parent')->user();
+
+        if ($enrollment->user_id !== $parent->id) {
+            abort(403, 'You do not have permission to update this child\'s photo.');
+        }
+
+        if ($enrollment->photo && Storage::disk('public')->exists($enrollment->photo)) {
+            Storage::disk('public')->delete($enrollment->photo);
+        }
+
+        $enrollment->photo = null;
+        $enrollment->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Photo removed.',
+        ]);
+    }
 }
