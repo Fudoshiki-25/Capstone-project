@@ -77,8 +77,6 @@
   @include('parent.modals.document-view')
 </div>
 
-@endsection
-
 @include('parent.partials.styles')
 
 @include('parent.scripts.navigation')
@@ -86,10 +84,8 @@
 @include('parent.scripts.toast')
 @include('parent.scripts.enrollment-form')
 
-
-
 @stack('scripts')
 
-
-
 @include('parent.scripts.announcement')
+
+@endsection

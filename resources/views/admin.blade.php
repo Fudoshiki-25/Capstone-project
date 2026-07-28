@@ -1474,10 +1474,6 @@ body { margin:0; background:#f1f5f9; }
   </div>
 </div>
 
-@endsection
-
-
-
 <!-- Bootstrap JS already loaded once, globally, by layout/app.blade.php -->
 <script src="{{ asset('vendor/chartjs/chart.umd.js') }}"></script>
 <script>
@@ -2162,3 +2158,5 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
 </div>
+
+@endsection
