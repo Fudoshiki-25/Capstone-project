@@ -33,7 +33,7 @@ class SuperAdminController extends Controller
             'email'          => $data['email'],
             'password'       => Hash::make($data['password']),
             'role'           => 'admin',
-            'assigned_grade' => $data['assigned_grade'] ?: null,
+            'assigned_grade' => ($data['assigned_grade'] ?? null) ?: null,
             'is_active'      => true,
         ]);
 
@@ -56,7 +56,7 @@ class SuperAdminController extends Controller
 
         $admin->update([
             'email'          => $data['email'],
-            'assigned_grade' => $data['assigned_grade'] ?: null,
+            'assigned_grade' => ($data['assigned_grade'] ?? null) ?: null,
         ]);
 
         \App\Models\ActivityLog::record($request->user(), 'Updated Admin Account', "Admin: {$admin->first_name} {$admin->last_name}", 'info');

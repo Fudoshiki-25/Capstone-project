@@ -21,6 +21,19 @@ RUN apt-get update && apt-get install -y \
     && echo "=== enabled mpm modules ===" && ls -la /etc/apache2/mods-enabled/ | grep -i mpm \
     && rm -rf /var/lib/apt/lists/*
 
+# Default 128M memory_limit isn't enough to decode a full-resolution photo
+# before Intervention/Image can scale it down (ImageUploadStorer needs the
+# whole bitmap in memory first) — a modern phone photo (e.g. 4000x3000) needs
+# ~150MB+ just to decode, causing an uncatchable fatal OOM on profile photo,
+# child photo, and proof-of-payment uploads. upload_max_filesize/post_max_size
+# bumped too so PHP itself doesn't reject files right at the app's own
+# 2MB/5MB validation limits.
+RUN { \
+        echo 'memory_limit = 256M'; \
+        echo 'upload_max_filesize = 8M'; \
+        echo 'post_max_size = 16M'; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html

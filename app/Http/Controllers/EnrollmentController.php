@@ -419,7 +419,7 @@ class EnrollmentController extends Controller
         $enrollment = StudentEnrollment::create([
             'user_id'           => $parent->id,
             'first_name'        => $validated['first_name'],
-            'middle_name'       => $validated['middle_name'] ?: 'N/A',
+            'middle_name'       => ($validated['middle_name'] ?? null) ?: 'N/A',
             'last_name'         => $validated['last_name'],
             'suffix'            => 'N/A',
             'lrn'               => 'N/A',
