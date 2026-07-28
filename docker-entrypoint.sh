@@ -32,4 +32,16 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
+# Re-assert this at container start (not just build time) in case something
+# in the runtime environment re-enables a conflicting MPM between build and
+# start — cheap insurance, and the diagnostic output lets us compare the
+# mods-enabled state at this exact moment against what the build produced.
+a2dismod mpm_event >/dev/null 2>&1 || true
+a2dismod mpm_worker >/dev/null 2>&1 || true
+a2enmod mpm_prefork >/dev/null 2>&1 || true
+echo "=== mods-enabled at container start ==="
+ls -la /etc/apache2/mods-enabled/ | grep -i mpm
+echo "=== apache2ctl -M at container start ==="
+apache2ctl -M 2>&1 || true
+
 exec "$@"
