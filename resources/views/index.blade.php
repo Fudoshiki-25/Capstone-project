@@ -164,7 +164,7 @@
 <!-- NAV -->
 <nav class="phlc-nav sticky-top py-2">
   <div class="container d-flex align-items-center justify-content-between">
-    <a href="/index" class="d-flex align-items-center gap-2 text-decoration-none">
+    <a href="{{ route('landingpage') }}" class="d-flex align-items-center gap-2 text-decoration-none">
       <img src="{{ asset('photo/logo.png') }}" alt="PHLC Logo" style="width:50px;height:50px;border-radius:50%;border:2px solid var(--phlc-gold);background:#fff;padding:2px;">
       <div>
         <div class="fw-bold text-white" style="font-size:14px;line-height:1.2">Premiere Heights Learning Center</div>
