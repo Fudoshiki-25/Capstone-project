@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
 
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+        $middleware->append(\App\Http\Middleware\TrackLastSeen::class);
 
         $middleware->alias([
             'role'      => \App\Http\Middleware\EnsureUserHasRole::class,

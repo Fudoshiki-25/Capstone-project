@@ -12,13 +12,19 @@ var currentDraftId = null;
 // Branded calendar picker for Date of Birth (replaces the browser's native
 // <input type="date">, which renders inconsistently — plain system UI in
 // Chrome, a different widget in Firefox/Safari — with one consistent look.
-var birthdayPicker = flatpickr('#f_birthday', {
-  dateFormat: 'Y-m-d',
-  altInput: true,
-  altFormat: 'F j, Y',
-  maxDate: 'today',
-  minDate: '1990-01-01',
-  disableMobile: true,
+// Deferred to DOMContentLoaded so it's not order-dependent on where #f_birthday
+// happens to sit relative to this script tag (bit us in the superadmin
+// announcement pickers — same mistake, not repeating it here).
+var birthdayPicker;
+document.addEventListener('DOMContentLoaded', function () {
+  birthdayPicker = flatpickr('#f_birthday', {
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'F j, Y',
+    maxDate: 'today',
+    minDate: '1990-01-01',
+    disableMobile: true,
+  });
 });
 
 function switchStudentType(type) {

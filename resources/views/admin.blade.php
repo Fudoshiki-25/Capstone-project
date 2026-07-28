@@ -1478,7 +1478,9 @@ body { margin:0; background:#f1f5f9; }
 <script src="{{ asset('vendor/chartjs/chart.umd.js') }}"></script>
 <script>
 
-flatpickr('#addStudentDob', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', maxDate: 'today', minDate: '1990-01-01', disableMobile: true });
+document.addEventListener('DOMContentLoaded', function () {
+  flatpickr('#addStudentDob', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', maxDate: 'today', minDate: '1990-01-01', disableMobile: true });
+});
 
 /* ── Live chart data from the server (real enrollment records) ── */
 const _chartData = {

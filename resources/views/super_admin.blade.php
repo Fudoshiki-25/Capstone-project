@@ -488,7 +488,13 @@ body { margin:0; background:#f1f5f9; }
               $scopeColor = $scopeColors[$admin->assigned_grade] ?? ['bg' => '#ede9fe', 'text' => '#7c3aed'];
             @endphp
             <tr>
-              <td><span class="stu-avatar {{ $avColor }}">{{ $initials }}</span>{{ $admin->name }}</td>
+              <td>
+                <span class="position-relative d-inline-block me-2">
+                  <span class="stu-avatar {{ $avColor }}" style="margin-right:0">{{ $initials }}</span>
+                  <span style="position:absolute;bottom:-1px;right:-1px;width:9px;height:9px;border-radius:50%;background:{{ $admin->isOnline() ? '#16a34a' : '#cbd5e1' }};border:2px solid #fff" title="{{ $admin->isOnline() ? 'Online now' : 'Offline' }}"></span>
+                </span>{{ $admin->name }}
+                @if($admin->isOnline())<span class="badge rounded-pill ms-1" style="background:#dcfce7;color:#166534;font-size:10px;font-weight:600;padding:2px 8px">Online</span>@endif
+              </td>
               <td>{{ $admin->email }}</td>
               <td><span class="badge rounded-pill px-3" style="background:{{ $scopeColor['bg'] }};color:{{ $scopeColor['text'] }}">{{ $admin->assigned_grade ?? 'All Grades' }}</span></td>
               <td>@if($isActive)<span class="badge rounded-pill px-3" style="background:#dcfce7;color:#166534;font-weight:600">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
@@ -964,10 +970,19 @@ body { margin:0; background:#f1f5f9; }
 </style>
 
 <script>
-var epStartPicker = flatpickr('#ep-start', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
-var epEndPicker   = flatpickr('#ep-end',   { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
-var annFromPicker  = flatpickr('#ann-from',  { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
-var annUntilPicker = flatpickr('#ann-until', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+// Declared here (script scope, so every function below can use them) but only
+// actually initialized once the whole document — including #ann-from/#ann-until,
+// which live inside a modal much further down the page than this script tag —
+// has finished parsing. Initializing immediately would query the DOM before
+// those elements exist, silently returning an empty NodeList instead of a
+// real picker instance (no error, just picker.setDate() failing later).
+var epStartPicker, epEndPicker, annFromPicker, annUntilPicker;
+document.addEventListener('DOMContentLoaded', function () {
+  epStartPicker  = flatpickr('#ep-start',  { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+  epEndPicker    = flatpickr('#ep-end',    { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+  annFromPicker  = flatpickr('#ann-from',  { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+  annUntilPicker = flatpickr('#ann-until', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+});
 
 /* ── Bootstrap modal helper ── */
 function bsModal(id) { return bootstrap.Modal.getOrCreateInstance(document.getElementById(id)); }

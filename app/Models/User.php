@@ -20,6 +20,7 @@ class User extends Authenticatable
         'assigned_grade',
         'is_active',
         'last_login_at',
+        'last_seen_at',
         'profile_photo',
     ];
 
@@ -33,6 +34,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
+            'last_login_at'     => 'datetime',
+            'last_seen_at'      => 'datetime',
         ];
     }
 
@@ -55,5 +58,16 @@ class User extends Authenticatable
     public function hasAdminAccess(): bool
     {
         return in_array($this->role, ['admin', 'superadmin']);
+    }
+
+    /**
+     * "Online" = made an authenticated request within the last few minutes.
+     * last_seen_at is refreshed on every request by the TrackLastSeen
+     * middleware, so this is a live-ish presence indicator, not just "has
+     * an active account" (that's is_active, a separate concept).
+     */
+    public function isOnline(): bool
+    {
+        return $this->last_seen_at !== null && $this->last_seen_at->gt(now()->subMinutes(3));
     }
 }
