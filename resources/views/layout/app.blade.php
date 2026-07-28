@@ -646,6 +646,14 @@ img.brand-logo {
 .phlc-toast-info    { border-left-color: #0369a1; }
 .phlc-toast-info    .phlc-toast-icon { color: #0369a1; }
 
+/* Password fields pair a show/hide eye button with Bootstrap's built-in
+   invalid-state icon in the same right-side padding — both render on top
+   of each other. The red border + message below already communicate the
+   error, so drop Bootstrap's icon here and let the eye button own that spot. */
+.form-control.pe-5.is-invalid {
+  background-image: none;
+}
+
 </style>
 </head>
 
