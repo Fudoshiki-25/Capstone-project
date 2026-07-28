@@ -63,7 +63,7 @@ function handleProfilePicChange(input) {
 
 function saveProfilePicFromModal() {
     if (!pendingProfileFile) {
-        showToast('No photo selected.', 'warning');
+        showToast('warning', 'No photo selected.');
         return;
     }
 
@@ -97,15 +97,15 @@ fetch(uploadPicUrl, {
 
         bootstrap.Modal.getOrCreateInstance(document.getElementById('photoActionModal')).hide();
         showPhotoActionList();
-        showToast(data.message, 'success');
+        showToast('success', data.message);
         setTimeout(() => location.reload(), 600);
     } else {
-        showToast(data.message ?? 'Upload failed.', 'danger');
+        showToast('danger', data.message ?? 'Upload failed.');
     }
 })
 .catch(err => {
     console.log('Catch error:', err);  // ← add this
-    showToast('An error occurred. Please try again.', 'danger');
+    showToast('danger', 'An error occurred. Please try again.');
 })
 .finally(() => {
     btn.disabled = false;
@@ -153,13 +153,13 @@ function removePhoto() {
             document.getElementById('fullPhotoView').innerHTML        = parentInitials;
             document.getElementById('sidebarAvatar').innerHTML        = parentInitials;
 
-            showToast(data.message, 'success');
+            showToast('success', data.message);
             setTimeout(() => location.reload(), 600);
         } else {
-            showToast(data.message ?? 'Failed to remove photo.', 'danger');
+            showToast('danger', data.message ?? 'Failed to remove photo.');
         }
     })
-    .catch(() => showToast('An error occurred.', 'danger'));
+    .catch(() => showToast('danger', 'An error occurred.'));
 }
 
 function viewFullPhoto() {
@@ -239,15 +239,15 @@ function updatePassword() {
     const cp      = document.getElementById('confirmPass').value;
 
     if (!current || !np || !cp) {
-        showToast('Please fill in all password fields.', 'warning');
+        showToast('warning', 'Please fill in all password fields.');
         return;
     }
     if (np !== cp) {
-        showToast('New passwords do not match.', 'warning');
+        showToast('warning', 'New passwords do not match.');
         return;
     }
     if (np.length < 8 || !/[A-Z]/.test(np) || !/[0-9]/.test(np) || !/[^A-Za-z0-9]/.test(np)) {
-        showToast('New password must be at least 8 characters and include an uppercase letter, a number, and a special character.', 'warning');
+        showToast('warning', 'New password must be at least 8 characters and include an uppercase letter, a number, and a special character.');
         return;
     }
 
@@ -271,7 +271,7 @@ function updatePassword() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            showToast(data.message, 'success');
+            showToast('success', data.message);
             ['currentPass', 'newPass', 'confirmPass'].forEach(id => {
                 document.getElementById(id).value = '';
             });
@@ -280,38 +280,17 @@ function updatePassword() {
             document.getElementById('matchMsg').textContent = '';
             setTimeout(() => location.reload(), 600);
         } else {
-            showToast(data.message ?? 'Update failed.', 'danger');
+            showToast('danger', data.message ?? 'Update failed.');
         }
     })
-    .catch(() => showToast('An error occurred. Please try again.', 'danger'))
+    .catch(() => showToast('danger', 'An error occurred. Please try again.'))
     .finally(() => {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-shield-check me-1"></i>Update Password';
     });
 }
 
-// ─────────────────────────────────────────────
-// TOAST HELPER
-// ─────────────────────────────────────────────
-
-function showToast(message, type = 'success') {
-    const container = document.getElementById('toastContainer');
-    if (!container) { alert(message); return; }
-
-    const colors = { success: '#1a2a5e', danger: '#dc2626', warning: '#d97706' };
-    const id = 'toast-' + Date.now();
-
-    container.insertAdjacentHTML('beforeend', `
-        <div id="${id}" class="toast align-items-center text-white border-0 show mb-2"
-             style="background:${colors[type] ?? colors.success};min-width:260px"
-             role="alert">
-            <div class="d-flex">
-                <div class="toast-body" style="font-size:13px">${message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                        data-bs-dismiss="toast"></button>
-            </div>
-        </div>`);
-
-    setTimeout(() => document.getElementById(id)?.remove(), 3500);
-}
+// showToast(type, message) is the shared helper defined once in toast.blade.php —
+// intentionally not redefined here to avoid this script's load order silently
+// overriding it for every other script sharing the page.
 </script>
