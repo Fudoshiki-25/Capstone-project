@@ -610,7 +610,7 @@ img.brand-logo {
 }
 
 /* ============================================================
-   25. TOAST NOTIFICATIONS — used by dpnhsToast() (see script below)
+   25. TOAST NOTIFICATIONS — used by phlciToast() (see script below)
    ============================================================ */
 .phlc-toast {
   display: flex; align-items: center; gap: 10px;
@@ -682,7 +682,7 @@ span.flatpickr-weekday { color: var(--navy); font-weight: 600; }
 {{-- ══════════════════════════════════════════════════════════
      TOAST CONTAINER  –  toasts are injected here by JS
      ══════════════════════════════════════════════════════════ --}}
-<div id="dpnhs-toast-container"
+<div id="phlci-toast-container"
      style="position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;align-items:flex-end;pointer-events:none;">
 </div>
 
@@ -753,10 +753,10 @@ span.flatpickr-weekday { color: var(--navy); font-weight: 600; }
 <script>
 /* ═══════════════════════════════════════════════════════════════
    TOAST SYSTEM
-   Usage anywhere:  dpnhsToast('Message here', 'success')
+   Usage anywhere:  phlciToast('Message here', 'success')
    Types:           'success' | 'error' | 'warning' | 'info'
    ═══════════════════════════════════════════════════════════════ */
-function dpnhsToast(msg, type = 'success', duration = 4000) {
+function phlciToast(msg, type = 'success', duration = 4000) {
   const icons = {
     success: 'bi-check-circle-fill',
     error:   'bi-x-circle-fill',
@@ -764,7 +764,7 @@ function dpnhsToast(msg, type = 'success', duration = 4000) {
     info:    'bi-info-circle-fill',
   };
 
-  const container = document.getElementById('dpnhs-toast-container');
+  const container = document.getElementById('phlci-toast-container');
   const el = document.createElement('div');
   el.className = `phlc-toast phlc-toast-${type}`;
   el.style.pointerEvents = 'auto';
@@ -773,7 +773,7 @@ function dpnhsToast(msg, type = 'success', duration = 4000) {
   el.innerHTML = `
     <i class="bi ${icons[type] ?? icons.info} phlc-toast-icon"></i>
     <span class="phlc-toast-body"></span>
-    <button class="phlc-toast-close" onclick="dpnhsDismissToast(this.parentElement)" aria-label="Close">
+    <button class="phlc-toast-close" onclick="phlciDismissToast(this.parentElement)" aria-label="Close">
       <i class="bi bi-x"></i>
     </button>`;
   el.querySelector('.phlc-toast-body').textContent = msg;
@@ -781,10 +781,10 @@ function dpnhsToast(msg, type = 'success', duration = 4000) {
   container.appendChild(el);
 
   // Auto-dismiss
-  setTimeout(() => dpnhsDismissToast(el), duration);
+  setTimeout(() => phlciDismissToast(el), duration);
 }
 
-function dpnhsDismissToast(el) {
+function phlciDismissToast(el) {
   if (!el || el.classList.contains('hiding')) return;
   el.classList.add('hiding');
   setTimeout(() => el.remove(), 300);
@@ -793,24 +793,24 @@ function dpnhsDismissToast(el) {
 /* ── Fire Laravel flash messages on page load ───────────────── */
 document.addEventListener('DOMContentLoaded', function () {
   @if(session('success'))
-    dpnhsToast(@json(session('success')), 'success');
+    phlciToast(@json(session('success')), 'success');
   @endif
 
   @if(session('error'))
-    dpnhsToast(@json(session('error')), 'error');
+    phlciToast(@json(session('error')), 'error');
   @endif
 
   @if(session('warning'))
-    dpnhsToast(@json(session('warning')), 'warning');
+    phlciToast(@json(session('warning')), 'warning');
   @endif
 
   @if(session('info'))
-    dpnhsToast(@json(session('info')), 'info');
+    phlciToast(@json(session('info')), 'info');
   @endif
 
   @if($errors->any())
     @foreach($errors->all() as $err)
-      dpnhsToast(@json($err), 'error');
+      phlciToast(@json($err), 'error');
     @endforeach
   @endif
 });

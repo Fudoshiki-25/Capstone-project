@@ -1518,11 +1518,11 @@ function generateSections(gradeLevel, btn) {
   if (btn) btn.disabled = true;
   apiFetch('{{ route("admin.sections.generate") }}', 'POST', { grade_level: gradeLevel })
     .then(data => {
-      dpnhsToast(data.message || 'Sections generated.', 'success');
+      phlciToast(data.message || 'Sections generated.', 'success');
       setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=sections'; }, 700);
     })
     .catch(() => {
-      dpnhsToast('Could not generate sections. Please try again.', 'error');
+      phlciToast('Could not generate sections. Please try again.', 'error');
       if (btn) btn.disabled = false;
     });
 }
@@ -1537,7 +1537,7 @@ function submitAddStudent(btn) {
   const dob    = document.getElementById('addStudentDob').value;
 
   if (!grade || !email || !last || !first || !dob) {
-    dpnhsToast('Please fill in all required fields.', 'error');
+    phlciToast('Please fill in all required fields.', 'error');
     return;
   }
 
@@ -1546,13 +1546,13 @@ function submitAddStudent(btn) {
     grade_level: grade, email, last_name: last, first_name: first, middle_name: middle, birthday: dob,
   })
     .then(data => {
-      dpnhsToast(data.message || 'Student enrolled successfully!', 'success');
+      phlciToast(data.message || 'Student enrolled successfully!', 'success');
       setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=students'; }, 1200);
     })
     .catch(async err => {
       let message = 'Could not add student. Please try again.';
       try { message = JSON.parse(err.message).message || message; } catch (e) {}
-      dpnhsToast(message, 'error');
+      phlciToast(message, 'error');
       btn.disabled = false;
     });
 }
@@ -1562,7 +1562,7 @@ function startExport(link) {
   const grade = document.getElementById('exportGrade').value;
   const url = '{{ route("admin.students.export") }}' + (grade ? '?grade_level=' + encodeURIComponent(grade) : '');
   window.location = url;
-  dpnhsToast('Export started — your download will begin shortly.', 'success');
+  phlciToast('Export started — your download will begin shortly.', 'success');
   setTimeout(() => { window.location = '{{ route("admin.dashboard") }}'; }, 1200);
 }
 
@@ -1577,13 +1577,13 @@ function submitTransfer(btn, enrollmentId) {
     grade_level: grade, section_name: section, reason,
   })
     .then(data => {
-      dpnhsToast(data.message || 'Transferred successfully!', 'success');
+      phlciToast(data.message || 'Transferred successfully!', 'success');
       setTimeout(() => { window.location = '{{ route("admin.dashboard") }}?tab=students'; }, 1200);
     })
     .catch(async err => {
       let message = 'Could not transfer student. Please try again.';
       try { message = JSON.parse(err.message).message || message; } catch (e) {}
-      dpnhsToast(message, 'error');
+      phlciToast(message, 'error');
       btn.disabled = false;
     });
 }
@@ -1619,7 +1619,7 @@ function submitResubmitFlag() {
   apiFetch(url, method, { feedback })
     .then(() => {
       bsModal('resubmitFeedbackModal').hide();
-      dpnhsToast('Parent has been notified to resubmit.', 'success');
+      phlciToast('Parent has been notified to resubmit.', 'success');
       setTimeout(() => location.reload(), 800);
     })
     .catch(() => {
@@ -1635,19 +1635,19 @@ function submitResubmitFlag() {
 function approveApplication(enrollmentId, name) {
   apiFetch(`/admin/applications/${enrollmentId}/approve`, 'PATCH')
     .then(data => {
-      dpnhsToast(data.message || `${name} has been approved.`, 'success');
+      phlciToast(data.message || `${name} has been approved.`, 'success');
       setTimeout(() => location.reload(), 700);
     })
-    .catch(() => dpnhsToast('Could not approve this application. Please try again.', 'error'));
+    .catch(() => phlciToast('Could not approve this application. Please try again.', 'error'));
 }
 
 function verifyTuitionPayment(paymentId) {
   apiFetch(`/admin/tuition/payments/${paymentId}/verify`, 'POST')
     .then(() => {
-      dpnhsToast('Payment marked as paid.', 'success');
+      phlciToast('Payment marked as paid.', 'success');
       setTimeout(() => location.reload(), 600);
     })
-    .catch(() => dpnhsToast('Could not verify this payment. Please try again.', 'error'));
+    .catch(() => phlciToast('Could not verify this payment. Please try again.', 'error'));
 }
 
 /* ── Profile: modern photo upload (drag-drop + live preview) ── */
@@ -1729,7 +1729,7 @@ function submitProfilePhoto(e) {
   fd.append('_method', 'POST');
   apiFetch('{{ route("admin.profile.photo") }}', 'POST', fd, true).then(() => {
     bsModal('managePhotoModal').hide();
-    dpnhsToast('Profile photo updated!', 'success');
+    phlciToast('Profile photo updated!', 'success');
     setTimeout(() => location.reload(), 600);
   }).catch(() => showPhotoError('Could not upload the photo. Please try again.'));
 }
@@ -1737,7 +1737,7 @@ function removeProfilePhoto() {
   if (!confirm('Remove your profile photo?')) return;
   apiFetch('{{ route("admin.profile.photo.remove") }}', 'DELETE').then(() => {
     bsModal('managePhotoModal').hide();
-    dpnhsToast('Profile photo removed.', 'success');
+    phlciToast('Profile photo removed.', 'success');
     setTimeout(() => location.reload(), 600);
   }).catch(() => alert('Could not remove the photo.'));
 }
@@ -1754,7 +1754,7 @@ function submitChangePassword(e) {
   }
   if (next !== confirm_) { alert('New password and confirmation do not match.'); return; }
   apiFetch('{{ route("admin.profile.password") }}', 'PUT', { current_password: current, password: next, password_confirmation: confirm_ })
-    .then(() => { dpnhsToast('Password updated successfully!', 'success'); document.getElementById('changePasswordForm').reset(); setTimeout(() => location.reload(), 600); })
+    .then(() => { phlciToast('Password updated successfully!', 'success'); document.getElementById('changePasswordForm').reset(); setTimeout(() => location.reload(), 600); })
     .catch(() => alert('Could not update your password. Please check your current password and try again.'));
 }
 
@@ -1812,7 +1812,7 @@ function toggleGrade(id) { document.getElementById(id).classList.toggle('open');
 /* ── Toast helper ── */
 function showToast(msg) {
   const t = document.createElement('div');
-  t.className = 'dpnhs-toast';
+  t.className = 'phlci-toast';
   t.innerHTML = `<i class="bi bi-check-circle-fill" style="color:#4ade80;font-size:18px"></i>${msg}`;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3500);

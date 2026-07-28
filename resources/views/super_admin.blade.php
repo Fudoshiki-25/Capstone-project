@@ -840,7 +840,7 @@ body { margin:0; background:#f1f5f9; }
           </div>
           <div class="col-12">
             <label class="form-label fw-medium" style="font-size:13px">Email Address *</label>
-            <input type="email" class="form-control" placeholder="admin@dpnhs.edu.ph" id="ca-email">
+            <input type="email" class="form-control" placeholder="admin@phlci.edu.ph" id="ca-email">
           </div>
           <div class="col-12">
             <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Level *</label>
@@ -1034,14 +1034,14 @@ function submitSAProfilePhoto(e) {
   fd.append('profile_photo', fileInput.files[0]);
   const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   fetch('{{ route('superadmin.profile.photo') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': token || '', 'Accept': 'application/json' }, body: fd })
-    .then(res => { if (!res.ok) throw new Error(); bsModal('saManagePhotoModal').hide(); dpnhsToast('Profile photo updated!', 'success'); setTimeout(() => location.reload(), 600); })
+    .then(res => { if (!res.ok) throw new Error(); bsModal('saManagePhotoModal').hide(); phlciToast('Profile photo updated!', 'success'); setTimeout(() => location.reload(), 600); })
     .catch(() => showSAPhotoError('Could not upload the photo. Please try again.'));
 }
 function removeSAProfilePhoto() {
   if (!confirm('Remove your profile photo?')) return;
   apiFetch('{{ route('superadmin.profile.photo.remove') }}', 'DELETE').then(() => {
     bsModal('saManagePhotoModal').hide();
-    dpnhsToast('Profile photo removed.', 'success');
+    phlciToast('Profile photo removed.', 'success');
     setTimeout(() => location.reload(), 600);
   }).catch(() => alert('Could not remove the photo.'));
 }
@@ -1058,7 +1058,7 @@ function submitSAChangePassword(e) {
   }
   if (next !== confirm_) { alert('New password and confirmation do not match.'); return; }
   apiFetch('{{ route('superadmin.profile.password') }}', 'PUT', { current_password: current, password: next, password_confirmation: confirm_ })
-    .then(() => { dpnhsToast('Password updated successfully!', 'success'); document.getElementById('saChangePasswordForm').reset(); setTimeout(() => location.reload(), 600); })
+    .then(() => { phlciToast('Password updated successfully!', 'success'); document.getElementById('saChangePasswordForm').reset(); setTimeout(() => location.reload(), 600); })
     .catch(() => alert('Could not update your password. Please check your current password and try again.'));
 }
 
@@ -1263,7 +1263,7 @@ function submitCreateAdmin() {
   if (pass !== pass2) { alert('Passwords do not match.'); return; }
   apiFetch('/superadmin/admins', 'POST', { first_name: fname, last_name: lname, email, assigned_grade: grade || null, password: pass }).then(() => {
     bootstrap.Modal.getInstance(document.getElementById('createAdminModal')).hide();
-    setTimeout(() => { dpnhsToast(`Admin account created for ${fname} ${lname}!`, 'success'); location.reload(); }, 350);
+    setTimeout(() => { phlciToast(`Admin account created for ${fname} ${lname}!`, 'success'); location.reload(); }, 350);
   }).catch(() => alert('Could not create the admin account. The email may already be in use.'));
 }
 
@@ -1282,24 +1282,24 @@ function submitEditAdmin() {
   const grade = document.getElementById('ea-grade').value;
   apiFetch(`/superadmin/admins/${_editAdminId}`, 'PUT', { email, assigned_grade: grade || null }).then(() => {
     bootstrap.Modal.getInstance(document.getElementById('editAdminModal')).hide();
-    setTimeout(() => { dpnhsToast('Admin account updated successfully.', 'success'); location.reload(); }, 350);
+    setTimeout(() => { phlciToast('Admin account updated successfully.', 'success'); location.reload(); }, 350);
   }).catch(() => alert('Could not update the admin account.'));
 }
 
 /* ── Admin actions ── */
 function resetAdminPassword(id, name) {
   if (!confirm(`Reset password for ${name}? A temporary password will be generated.`)) return;
-  apiFetch(`/superadmin/admins/${id}/reset-password`, 'POST').then(() => dpnhsToast(`Password reset for ${name}.`, 'success'))
+  apiFetch(`/superadmin/admins/${id}/reset-password`, 'POST').then(() => phlciToast(`Password reset for ${name}.`, 'success'))
     .catch(() => alert('Could not reset the password.'));
 }
 function deactivateAdmin(id, name) {
   if (!confirm(`Deactivate admin account for ${name}?`)) return;
-  apiFetch(`/superadmin/admins/${id}/toggle-active`, 'POST', { is_active: false }).then(() => { dpnhsToast(`${name}'s account has been deactivated.`, 'success'); location.reload(); })
+  apiFetch(`/superadmin/admins/${id}/toggle-active`, 'POST', { is_active: false }).then(() => { phlciToast(`${name}'s account has been deactivated.`, 'success'); location.reload(); })
     .catch(() => alert('Could not deactivate this account.'));
 }
 function activateAdmin(id, name) {
   if (!confirm(`Activate admin account for ${name}?`)) return;
-  apiFetch(`/superadmin/admins/${id}/toggle-active`, 'POST', { is_active: true }).then(() => { dpnhsToast(`${name}'s account has been activated.`, 'success'); location.reload(); })
+  apiFetch(`/superadmin/admins/${id}/toggle-active`, 'POST', { is_active: true }).then(() => { phlciToast(`${name}'s account has been activated.`, 'success'); location.reload(); })
     .catch(() => alert('Could not activate this account.'));
 }
 
@@ -1324,13 +1324,13 @@ function saveEnrollmentPeriod() {
   if (id) payload.id = id;
   apiFetch('/superadmin/enrollment-period', 'POST', payload).then(() => {
     bootstrap.Modal.getInstance(document.getElementById('enrollmentModal')).hide();
-    setTimeout(() => { dpnhsToast('Enrollment period updated!', 'success'); location.reload(); }, 350);
+    setTimeout(() => { phlciToast('Enrollment period updated!', 'success'); location.reload(); }, 350);
   }).catch(() => alert('Could not update the enrollment period.'));
 }
 
 function saveEnrollmentSettings() {
   const grades = Array.from(document.querySelectorAll('.grade-toggle-input')).map(el => ({ grade: el.dataset.grade, is_open: el.checked }));
-  apiFetch('/superadmin/grade-settings', 'PUT', { grades }).then(() => dpnhsToast('Grade settings saved!', 'success'))
+  apiFetch('/superadmin/grade-settings', 'PUT', { grades }).then(() => phlciToast('Grade settings saved!', 'success'))
     .catch(() => alert('Could not save grade settings.'));
 }
 
@@ -1341,8 +1341,8 @@ function saveTuitionRates() {
   }));
   const enrollmentFee = parseFloat(document.getElementById('enrollmentFeeInput').value) || 0;
   apiFetch('{{ route("superadmin.tuition.gradeFees.update") }}', 'PUT', { fees, enrollment_fee: enrollmentFee })
-    .then(() => dpnhsToast('Tuition rates saved!', 'success'))
-    .catch(() => dpnhsToast('Could not save tuition rates. Please try again.', 'error'));
+    .then(() => phlciToast('Tuition rates saved!', 'success'))
+    .catch(() => phlciToast('Could not save tuition rates. Please try again.', 'error'));
 }
 
 /* ═══ ANNOUNCEMENTS ═══ */
@@ -1450,7 +1450,7 @@ function submitAnnouncement() {
       _announcements.unshift(data);
     }
     renderAnnouncements();
-    dpnhsToast(`Announcement ${editId ? 'updated' : 'created'} successfully!`, 'success');
+    phlciToast(`Announcement ${editId ? 'updated' : 'created'} successfully!`, 'success');
   }).catch(() => alert('Could not save the announcement. Please try again.'));
 }
 

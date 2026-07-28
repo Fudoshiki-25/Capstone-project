@@ -14,7 +14,7 @@ function showToast(type, message) {
   var toast  = document.createElement('div');
   toast.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-left:4px solid ' + (colors[type]||'#64748b') + ';border-radius:8px;padding:12px 16px;min-width:260px;max-width:340px;box-shadow:0 4px 12px rgba(0,0,0,.12);display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#1e293b;animation:fadeIn .2s ease';
   toast.innerHTML = '<i class="bi ' + (icons[type]||'bi-bell') + '" style="color:' + (colors[type]||'#64748b') + ';margin-top:1px;flex-shrink:0"></i><span></span>';
-  toast.querySelector('span').textContent = message;
+  toast.querySelector('span').innerHTML = message;
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity .4s'; setTimeout(()=>{ toast.remove(); }, 400); }, 4000);
 }
