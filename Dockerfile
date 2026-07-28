@@ -38,10 +38,17 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
-# Apache should serve Laravel's /public as webroot, with .htaccess rewriting honored.
+# Apache should serve Laravel's /public as webroot, with .htaccess rewriting
+# honored, AND with symlinks followed — public/storage is a symlink to
+# storage/app/public (created by `artisan storage:link`), and every uploaded
+# file (profile photos, requirement docs, proof of payment) is served through
+# it. Options is NOT a merging directive across multiple <Directory> blocks
+# for the same path — whichever block Apache treats as authoritative wins
+# outright, so this block repeats FollowSymLinks explicitly instead of
+# relying on it being inherited from the sed-rewritten block above.
 RUN sed -ri -e 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf \
     && sed -ri -e 's!/var/www/!/var/www/html/public!g' /etc/apache2/apache2.conf \
-    && printf '<Directory /var/www/html/public>\n\tAllowOverride All\n\tRequire all granted\n</Directory>\n' >> /etc/apache2/apache2.conf
+    && printf '<Directory /var/www/html/public>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride All\n\tRequire all granted\n</Directory>\n' >> /etc/apache2/apache2.conf
 
 COPY . .
 

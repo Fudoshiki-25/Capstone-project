@@ -12,6 +12,12 @@ storage/framework/sessions/*
 storage/framework/views/*
 storage/app/public/*
 !storage/app/public/.gitkeep
+# Local dev (XAMPP/Windows) creates this via `artisan storage:link` with a
+# Windows-style target path, which is invalid inside the Linux container and
+# breaks Apache's symlink-following entirely if it leaks into a build via
+# COPY . . — better to always let docker-entrypoint.sh create it fresh
+# inside the container, where it resolves correctly.
+public/storage
 *.md
 .vscode
 .idea

@@ -31,6 +31,23 @@ fi
 mkdir -p /var/www/html/storage/app/public
 chown -R www-data:www-data /var/www/html/storage/app/public
 
+# Defense-in-depth: uploaded files are validated (mimes: jpg/jpeg/png/webp/pdf,
+# content-checked, not just by extension) and images are fully re-encoded
+# through GD before being written here, which already strips embedded
+# payloads (polyglot files, appended script code). This .htaccess is a second
+# layer in case a future validation bug ever lets something dangerous
+# through: even if a .php file somehow landed in this directory, Apache
+# would refuse to execute it and just serve it as an inert download instead.
+# Written here (not baked into the image) because the Railway Volume mounted
+# over this exact path at container start would otherwise silently hide
+# anything placed here at build time — same reason the chown above is here
+# and not only in the Dockerfile.
+cat > /var/www/html/storage/app/public/.htaccess <<'HTACCESS'
+<FilesMatch "\.(php|phtml|php[0-9]|phar|pl|py|jsp|asp|aspx|sh|cgi|exe)$">
+    Require all denied
+</FilesMatch>
+HTACCESS
+
 # Idempotent: skip if the symlink already exists (re-running on every deploy is fine either way).
 if [ ! -L /var/www/html/public/storage ]; then
     php artisan storage:link || true
