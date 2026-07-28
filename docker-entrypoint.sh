@@ -21,6 +21,16 @@ if [ "${DB_CONNECTION:-}" != "mysql" ]; then
     exit 1
 fi
 
+# The Dockerfile's chown only touches the image's own layer at build time —
+# it has no effect on a Railway Volume mounted over storage/app/public at
+# container start, which brings its own (often root-owned) permissions and
+# silently shadows the build-time chown. Re-apply it here, every start, so
+# uploads (profile photos, requirement docs, proof of payment) can actually
+# write into the mounted volume instead of failing with
+# "Unable to create a directory".
+mkdir -p /var/www/html/storage/app/public
+chown -R www-data:www-data /var/www/html/storage/app/public
+
 # Idempotent: skip if the symlink already exists (re-running on every deploy is fine either way).
 if [ ! -L /var/www/html/public/storage ]; then
     php artisan storage:link || true
