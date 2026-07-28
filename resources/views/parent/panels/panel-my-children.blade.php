@@ -1,10 +1,7 @@
 {{-- ===== PANEL: MY CHILDREN (PROFILES) ===== --}}
-{{-- $unlockedChildren / $hasUnlockedChildProfile computed once in
-     dashboard.blade.php and shared with sidebar-nav-links.blade.php, so the
-     nav lock and this panel's content can never disagree. --}}
-@php
-  $enrollmentPeriod = \App\Models\EnrollmentPeriod::current();
-@endphp
+{{-- $unlockedChildren / $hasUnlockedChildProfile / $enrollmentPeriod computed
+     once in dashboard.blade.php and shared with sidebar-nav-links.blade.php,
+     so the nav lock and this panel's content can never disagree. --}}
     <div id="panel-my-children" class="panel-section d-none p-3 p-md-4">
       <div class="fw-bold mb-1 text-center" style="font-size:22px;color:#1e293b">My Children (Profiles)</div>
       <div class="text-muted mb-4 text-center" style="font-size:14px">Personal, demographic, and academic placement records of your enrolled children</div>

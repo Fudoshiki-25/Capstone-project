@@ -344,6 +344,13 @@ img.brand-logo {
 /* ============================================================
    18. THREE-DOT ACTION DROPDOWN
    ============================================================ */
+/* Bootstrap's .table-responsive sets overflow-x: auto, which browsers force
+   overflow-y to also become non-visible for (a well-known CSS quirk) — this
+   silently clips the absolutely-positioned dropdown below when a table has
+   few rows (nothing to scroll past yet). Horizontal scrolling still works
+   fine with overflow-y explicitly set back to visible. */
+.table-responsive { overflow-y: visible; }
+
 .action-dropdown {
   display: none;
   position: absolute; right: 0; top: calc(100% + 4px);

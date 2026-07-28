@@ -132,6 +132,20 @@ class EnrollmentController extends Controller
     {
         $validated = $request->validate($this->rules());
 
+        $period = \App\Models\EnrollmentPeriod::current();
+        if (! $period || ! $period->is_open) {
+            return response()->json([
+                'message' => 'Enrollment is currently closed. Please check back once the next enrollment period opens.',
+            ], 403);
+        }
+
+        $gradeSetting = \App\Models\GradeEnrollmentSetting::where('grade_level', $validated['grade_level'])->first();
+        if ($gradeSetting && ! $gradeSetting->is_open) {
+            return response()->json([
+                'message' => 'Enrollment for ' . $validated['grade_level'] . ' is currently closed.',
+            ], 403);
+        }
+
         $parent = Auth::guard('parent')->user();
 
         $path = ImageUploadStorer::store(

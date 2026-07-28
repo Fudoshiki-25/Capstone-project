@@ -8,6 +8,12 @@
     // explicitly, the same way RequirementsController and Authcontroller do.
     $user = Auth::guard('parent')->user();
     $initials = strtoupper(substr($user->first_name, 0, 1)) . strtoupper(substr($user->last_name, 0, 1));
+
+    // Whether new enrollment applications can currently be submitted — mirrors
+    // the same check enforced server-side in EnrollmentController::store().
+    // Grade-level closures are checked separately, per grade, at submit time.
+    $enrollmentPeriod  = \App\Models\EnrollmentPeriod::current();
+    $isEnrollmentOpen  = (bool) ($enrollmentPeriod && $enrollmentPeriod->is_open);
     $fullName = $user->first_name . ' ' . $user->last_name;
 
     // Real Home tab cards: everything EXCEPT drafts. A 'draft' means Step 1

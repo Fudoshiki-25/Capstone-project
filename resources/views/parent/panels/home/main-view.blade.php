@@ -33,15 +33,25 @@
           </div>
           <div class="fw-bold mb-2" style="font-size:22px;color:#1e293b">No students enrolled yet</div>
           <div class="text-muted mb-4" style="font-size:14px;max-width:400px;line-height:1.7">
-            Start the enrollment process for SY 2026–2027 at Premiere Heights Learning Center, Inc.
+            Start the enrollment process for SY {{ $enrollmentPeriod->school_year ?? '2026–2027' }} at Premiere Heights Learning Center, Inc.
           </div>
+          @if($isEnrollmentOpen)
           <button class="btn fw-bold px-5 py-3" style="background:#1a2a5e;color:#fff;font-size:15px;border-radius:12px;box-shadow:0 4px 16px rgba(26,42,94,.25)" onclick="resetPHLCIForm(); showHomeSubPanel('enrollment-form')">
             <i class="bi bi-person-plus-fill me-2"></i>Enroll Your First Child
           </button>
           <div class="mt-4 d-flex align-items-center gap-2 px-3 py-2 rounded-3" style="background:#f0f9ff;border:1px solid #bae6fd;font-size:12.5px;color:#0369a1">
             <i class="bi bi-calendar-check-fill flex-shrink-0"></i>
-            <span><strong>Enrollment Period:</strong> June 1 – July 31, 2026</span>
+            <span><strong>Enrollment Period:</strong> {{ $enrollmentPeriod && $enrollmentPeriod->start_date ? $enrollmentPeriod->start_date->format('F j') : '—' }} – {{ $enrollmentPeriod && $enrollmentPeriod->end_date ? $enrollmentPeriod->end_date->format('F j, Y') : '—' }}</span>
           </div>
+          @else
+          <button class="btn fw-bold px-5 py-3" style="background:#e2e8f0;color:#64748b;font-size:15px;border-radius:12px;cursor:not-allowed" disabled>
+            <i class="bi bi-lock-fill me-2"></i>Enrollment Closed
+          </button>
+          <div class="mt-4 d-flex align-items-center gap-2 px-3 py-2 rounded-3" style="background:#fef2f2;border:1px solid #fecaca;font-size:12.5px;color:#991b1b">
+            <i class="bi bi-exclamation-circle-fill flex-shrink-0"></i>
+            <span>Enrollment is currently closed. Please check back once the next enrollment period opens.</span>
+          </div>
+          @endif
         </div>
 
         @else
@@ -90,6 +100,7 @@
           @endforeach
 
           {{-- Plus card to enroll another --}}
+          @if($isEnrollmentOpen)
           <div onclick="resetPHLCIForm(); showHomeSubPanel('enrollment-form')"
                style="background:#fff;border:2px dashed #1a2a5e;border-radius:14px;padding:20px;min-width:200px;max-width:220px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;transition:background .15s;color:#1a2a5e"
                onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='#fff'">
@@ -98,12 +109,27 @@
             </div>
             <div class="fw-semibold text-center" style="font-size:13px">Enroll Another Child</div>
           </div>
+          @else
+          <div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:14px;padding:20px;min-width:200px;max-width:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#94a3b8">
+            <div style="width:52px;height:52px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center">
+              <i class="bi bi-lock-fill" style="font-size:20px;color:#94a3b8"></i>
+            </div>
+            <div class="fw-semibold text-center" style="font-size:13px">Enrollment Closed</div>
+          </div>
+          @endif
         </div>
 
+        @if($isEnrollmentOpen)
         <div class="mt-2 d-flex align-items-center gap-2 px-3 py-2 rounded-3" style="max-width:560px;background:#f0f9ff;border:1px solid #bae6fd;font-size:12.5px;color:#0369a1">
           <i class="bi bi-calendar-check-fill flex-shrink-0"></i>
-          <span><strong>Enrollment Period:</strong> June 1 – July 31, 2026. Complete all steps before the deadline.</span>
+          <span><strong>Enrollment Period:</strong> {{ $enrollmentPeriod && $enrollmentPeriod->start_date ? $enrollmentPeriod->start_date->format('F j') : '—' }} – {{ $enrollmentPeriod && $enrollmentPeriod->end_date ? $enrollmentPeriod->end_date->format('F j, Y') : '—' }}. Complete all steps before the deadline.</span>
         </div>
+        @else
+        <div class="mt-2 d-flex align-items-center gap-2 px-3 py-2 rounded-3" style="max-width:560px;background:#fef2f2;border:1px solid #fecaca;font-size:12.5px;color:#991b1b">
+          <i class="bi bi-exclamation-circle-fill flex-shrink-0"></i>
+          <span>Enrollment is currently closed. Existing applications can still be viewed under My Children.</span>
+        </div>
+        @endif
         @endif
 
       </div>{{-- /home-main-view --}}

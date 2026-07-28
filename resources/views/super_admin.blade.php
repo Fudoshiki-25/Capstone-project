@@ -479,12 +479,19 @@ body { margin:0; background:#f1f5f9; }
               $avColors = ['av-blue','av-green','av-orange','av-purple','av-gold','av-red'];
               $avColor  = $avColors[$admin->id % count($avColors)];
               $isActive = (bool) $admin->is_active;
+              $scopeColors = [
+                  'Grade 7'  => ['bg' => '#dcfce7', 'text' => '#2d6a2d'],
+                  'Grade 8'  => ['bg' => '#fef9e0', 'text' => '#d4a900'],
+                  'Grade 9'  => ['bg' => '#fee2e2', 'text' => '#b91c1c'],
+                  'Grade 10' => ['bg' => '#e8ecf7', 'text' => '#1a2a5e'],
+              ];
+              $scopeColor = $scopeColors[$admin->assigned_grade] ?? ['bg' => '#ede9fe', 'text' => '#7c3aed'];
             @endphp
             <tr>
               <td><span class="stu-avatar {{ $avColor }}">{{ $initials }}</span>{{ $admin->name }}</td>
               <td>{{ $admin->email }}</td>
-              <td><span class="badge rounded-pill px-3" style="background:#f1f5f9;color:#475569">{{ $admin->assigned_grade ?? 'All Grades' }}</span></td>
-              <td>@if($isActive)<span class="badge-enrolled">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
+              <td><span class="badge rounded-pill px-3" style="background:{{ $scopeColor['bg'] }};color:{{ $scopeColor['text'] }}">{{ $admin->assigned_grade ?? 'All Grades' }}</span></td>
+              <td>@if($isActive)<span class="badge rounded-pill px-3" style="background:#dcfce7;color:#166534;font-weight:600">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
               <td class="text-muted" style="font-size:12px">{{ $admin->last_login_at ? \Carbon\Carbon::parse($admin->last_login_at)->format('M j, Y – g:i A') : 'Never' }}</td>
               <td>
                 <div class="action-menu-wrap position-relative">
@@ -824,7 +831,7 @@ body { margin:0; background:#f1f5f9; }
           </div>
           <div>
             <div style="font-size:17px;font-weight:800;color:#fff">Create Admin Account</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.7)">Assign to one grade level (Gr 7–10)</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7)">Assign to one grade level</div>
           </div>
         </div>
       </div>
@@ -846,6 +853,13 @@ body { margin:0; background:#f1f5f9; }
             <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Level *</label>
             <select class="form-select" id="ca-grade">
               <option value="">Select grade level</option>
+              <option>Kinder</option>
+              <option>Grade 1</option>
+              <option>Grade 2</option>
+              <option>Grade 3</option>
+              <option>Grade 4</option>
+              <option>Grade 5</option>
+              <option>Grade 6</option>
               <option>Grade 7</option>
               <option>Grade 8</option>
               <option>Grade 9</option>
@@ -897,6 +911,8 @@ body { margin:0; background:#f1f5f9; }
         <div class="mb-3">
           <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Level</label>
           <select class="form-select" id="ea-grade">
+            <option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option>
+            <option>Grade 4</option><option>Grade 5</option><option>Grade 6</option>
             <option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option>
           </select>
         </div>

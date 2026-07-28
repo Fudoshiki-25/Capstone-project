@@ -218,6 +218,7 @@ class Authcontroller extends Controller
 
                 if (in_array($user->role, ['admin', 'superadmin'])) {
                     $request->session()->regenerate();
+                    $user->update(['last_login_at' => now()]);
                     return redirect('/admin')
                         ->with('success', 'Welcome back, ' . $user->first_name . '!');
                 }
@@ -246,6 +247,7 @@ class Authcontroller extends Controller
             $user = Auth::guard('web')->user();
 
             if (in_array($user->role, ['admin', 'superadmin'])) {
+                $user->update(['last_login_at' => now()]);
                 return redirect('/admin')
                     ->with('success', 'Welcome back, ' . $user->first_name . '!');
             }
