@@ -49,6 +49,25 @@
     font-size:13px; border:3px solid #fff;
   }
 
+  /* ── Modern Profile Photo: upload modal (matches admin/super-admin) ── */
+  .pp-modal .modal-content { border-radius:16px; border:none; }
+  .pp-dropzone {
+    border:2px dashed #e2e8f0; border-radius:14px;
+    padding:28px 20px; display:flex; flex-direction:column; align-items:center; gap:14px;
+    cursor:pointer; transition:border-color .15s, background .15s; text-align:center;
+  }
+  .pp-dropzone:hover, .pp-dropzone.pp-dragover {
+    border-color:#F5C800; background:#fef9e0;
+  }
+  .pp-preview-circle {
+    width:96px; height:96px; border-radius:50%; overflow:hidden;
+    background:#f1f5f9; display:flex; align-items:center; justify-content:center;
+    border:2px solid #e2e8f0; flex-shrink:0;
+  }
+  .pp-preview-circle img { width:100%; height:100%; object-fit:cover; }
+  .pp-preview-fallback { color:#94a3b8; font-size:36px; }
+  .pp-dropzone-text { max-width:280px; }
+
   /* ── Sidebar logout (pinned to bottom, matches admin/super-admin placement) ── */
   .sb-logout {
     display:flex; align-items:center; gap:10px;

@@ -8,30 +8,26 @@
         <div class="card border rounded-3 p-4 mb-4">
           <div class="fw-bold mb-3 pb-3" style="font-size:15px;color:#1e293b;border-bottom:1px solid #f1f5f9"><i class="bi bi-image-fill me-2 text-navy"></i>Profile Picture</div>
           <div class="d-flex flex-column align-items-center text-center py-2">
-            <div class="pp-avatar-wrap" onclick="openPhotoModal()" role="button" tabindex="0" title="Click to manage photo">
-              <div id="profileAvatarPreview" style="width:110px;height:110px;border-radius:50%;overflow:hidden">
-                @if($user->profile_pic)
-                  <img src="{{ asset('storage/' . $user->profile_pic) }}" alt="Profile photo" class="pp-avatar-img">
-                @else
-                  <div class="pp-avatar-fallback">{{ $initials }}</div>
-                @endif
-              </div>
+            <div class="pp-avatar-wrap" onclick="openPhotoModal()" role="button" tabindex="0" title="Change profile photo">
+              @if($user->profile_pic)
+                <img src="{{ asset('storage/' . $user->profile_pic) }}" alt="Profile photo" class="pp-avatar-img" id="ppCurrentImg">
+              @else
+                <div class="pp-avatar-fallback" id="ppCurrentFallback">{{ $initials }}</div>
+              @endif
               <div class="pp-avatar-overlay"><i class="bi bi-camera-fill"></i></div>
               <div class="pp-avatar-badge"><i class="bi bi-camera-fill"></i></div>
             </div>
             <div class="fw-semibold mt-3" style="font-size:14.5px;color:#1e293b">{{ $fullName }}</div>
             <div class="text-muted" style="font-size:13px">{{ $user->email }}</div>
             <button type="button" class="btn btn-outline-navy btn-sm fw-semibold mt-3" onclick="openPhotoModal()">
-              <i class="bi bi-pencil-fill me-1"></i>Manage Photo
+              <i class="bi bi-pencil-fill me-1"></i>Change Photo
             </button>
           </div>
         </div>
 
-        <input type="file" id="profilePicInput" accept="image/*" class="d-none" onchange="handleProfilePicChange(this)">
+        <input type="file" id="pp-file" name="profile_pic" accept="image/png, image/jpeg" class="d-none" onchange="handlePhotoSelect(this.files[0])">
 
         @include('parent.modals.photo-action')
-
-        @include('parent.modals.photo-view')
 
         <!-- Change Password -->
         <div class="card border rounded-3 p-4">

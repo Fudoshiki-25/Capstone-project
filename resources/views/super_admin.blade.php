@@ -113,7 +113,7 @@ body { margin:0; background:#f1f5f9; }
   padding:20px 20px 16px;
   border-bottom:1px solid rgba(255,255,255,.08);
 }
-.sb-brand img { width:40px; height:40px; border-radius:10px; }
+.sb-brand img { width:40px; height:40px; border-radius:10px; background:#fff; padding:3px; }
 .sb-brand-name { font-size:15px; font-weight:800; color:#fff; letter-spacing:.01em; }
 .sb-brand-sub  { font-size:10.5px; color:rgba(255,255,255,.4); }
 
