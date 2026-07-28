@@ -203,9 +203,9 @@
           <input type="file" accept="image/*,.pdf" style="display:none" onchange="showPaymentFileName(this)">
         </label>
         <span id="paymentFileName" class="d-block mt-2 text-muted" style="font-size:12px"></span>
-        <div id="payProofPreview" style="display:none;position:relative;margin-top:8px;max-width:260px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;padding:6px">
-          <button type="button" onclick="removePaymentProof()" title="Remove file" class="btn p-0 d-flex align-items-center justify-content-center" style="position:absolute;top:6px;right:6px;width:22px;height:22px;background:#1e293b;color:#fff;border-radius:50%;border:2px solid #fff;font-size:13px;line-height:1;z-index:1"><i class="bi bi-x"></i></button>
-          <img id="payProofImg" src="" alt="" style="max-width:100%;max-height:120px;object-fit:contain;border-radius:6px">
+        <div id="payProofPreview" style="display:none;position:relative;margin-top:8px;width:120px;border:1px solid #e2e8f0;border-radius:8px;overflow:visible;background:#fff;padding:4px">
+          <button type="button" onclick="removePaymentProof()" title="Remove file" class="btn p-0 d-flex align-items-center justify-content-center" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;background:#1e293b;color:#fff;border-radius:50%;border:2px solid #fff;font-size:13px;line-height:1;z-index:1"><i class="bi bi-x"></i></button>
+          <img id="payProofImg" src="" alt="" style="width:100%;max-height:120px;object-fit:contain;border-radius:6px">
         </div>
       </div>
       <div class="mt-3 p-2 rounded-2" style="background:#eff6ff;border:1px solid #bfdbfe;font-size:12px;color:#1e40af">
