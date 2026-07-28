@@ -8,6 +8,12 @@
   <link href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet"/>
   <link href="{{ asset('vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet"/>
   <link href="{{ asset('vendor/flatpickr/flatpickr.min.css') }}" rel="stylesheet"/>
+  {{-- Loaded here (before @yield('content')) because dashboard/admin/superadmin
+       scripts call flatpickr(...) immediately at the top level, not inside a
+       click handler — unlike Bootstrap, which those pages only ever touch
+       from inside onclick handlers that fire well after the whole page,
+       including scripts loaded near </body>, has finished loading. --}}
+  <script src="{{ asset('vendor/flatpickr/flatpickr.min.js') }}"></script>
   {{-- Single recaptcha load — the render= variant is for v3; the plain one is for v2 checkbox. Keep only ONE. --}}
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
   @stack('style')
@@ -519,12 +525,6 @@ img.brand-logo {
   overflow: hidden;
 }
 .stu-profile-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.stu-profile-avatar:hover::after {
-  content: 'Upload'; position: absolute; inset: 0;
-  background: rgba(26,42,94,.45); border-radius: 50%;
-  color: #fff; font-size: 12px;
-  display: flex; align-items: center; justify-content: center;
-}
 
 .sched-icon {
   width: 42px; height: 42px; border-radius: 10px;
@@ -750,7 +750,6 @@ span.flatpickr-weekday { color: var(--navy); font-weight: 600; }
 @endunless
 <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"></div>
 <script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ asset('vendor/flatpickr/flatpickr.min.js') }}"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
    TOAST SYSTEM
