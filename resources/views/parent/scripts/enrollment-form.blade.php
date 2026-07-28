@@ -9,6 +9,18 @@ var PHLCIStudentType = 'old';
 // (enrollment-requirements-script.blade.php) read this same variable.
 var currentDraftId = null;
 
+// Branded calendar picker for Date of Birth (replaces the browser's native
+// <input type="date">, which renders inconsistently — plain system UI in
+// Chrome, a different widget in Firefox/Safari — with one consistent look.
+var birthdayPicker = flatpickr('#f_birthday', {
+  dateFormat: 'Y-m-d',
+  altInput: true,
+  altFormat: 'F j, Y',
+  maxDate: 'today',
+  minDate: '1990-01-01',
+  disableMobile: true,
+});
+
 function switchStudentType(type) {
   PHLCIStudentType = type;
   var newOnlyEls = document.querySelectorAll('.PHLCI-new-only');
@@ -86,7 +98,7 @@ function loadDraftIntoForm(enrollmentId) {
     document.getElementById('f_suffix').value             = e.suffix || '';
     document.getElementById('f_lrn').value                = e.lrn || '';
     document.getElementById('f_grade_level').value        = e.grade_level || '';
-    document.getElementById('f_birthday').value           = e.birthday || '';
+    birthdayPicker.setDate(e.birthday || '', true);
     document.getElementById('f_birth_place').value        = e.birth_place || '';
     document.getElementById('f_address').value            = e.address || '';
     var lastSchoolEl = document.getElementById('f_last_school');
@@ -365,6 +377,8 @@ function buildDocRow(docType, accentColor, uploadedInfo) {
   var feedbackHtml = '';
   var actionBtn;
 
+  var viewBtn = '';
+
   if (needsResubmit) {
     subInfo = '<span class="fw-medium" style="font-size:11px;color:#991b1b"><i class="bi bi-exclamation-circle-fill me-1"></i>Needs Resubmit</span><span class="text-muted ms-2" style="font-size:11px">' + uploaded.uploaded_at + '</span>';
     if (uploaded.feedback) {
@@ -378,7 +392,11 @@ function buildDocRow(docType, accentColor, uploadedInfo) {
     actionBtn = '<label class="btn btn-sm fw-semibold" style="background:' + accentColor + ';color:#fff;font-size:12px;cursor:pointer"><i class="bi bi-upload me-1"></i>Upload<input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleDocUpload(this,\'' + docType + '\')"></label>';
   }
 
-  return '<div class="d-flex align-items-center justify-content-between p-3 rounded-2" id="' + rowId + '" style="background:#f8fafc;border:1px solid ' + (needsResubmit ? '#fecaca' : '#e2e8f0') + '"><div style="flex:1;min-width:0"><div class="fw-medium" style="font-size:13.5px;color:#1e293b">' + label + '</div><div class="mt-1">' + subInfo + '</div>' + feedbackHtml + '</div><div class="ms-2 flex-shrink-0"><div id="spinner-' + docType + '" class="spinner-border spinner-border-sm text-secondary d-none" style="width:16px;height:16px"></div>' + actionBtn + '</div></div>';
+  if (uploaded && uploaded.url) {
+    viewBtn = '<a href="' + uploaded.url + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary fw-semibold me-1" style="font-size:12px" title="View uploaded file"><i class="bi bi-eye me-1"></i>View</a>';
+  }
+
+  return '<div class="d-flex align-items-center justify-content-between p-3 rounded-2" id="' + rowId + '" style="background:#f8fafc;border:1px solid ' + (needsResubmit ? '#fecaca' : '#e2e8f0') + '"><div style="flex:1;min-width:0"><div class="fw-medium" style="font-size:13.5px;color:#1e293b">' + label + '</div><div class="mt-1">' + subInfo + '</div>' + feedbackHtml + '</div><div class="ms-2 flex-shrink-0 d-flex align-items-center"><div id="spinner-' + docType + '" class="spinner-border spinner-border-sm text-secondary d-none me-1" style="width:16px;height:16px"></div>' + viewBtn + actionBtn + '</div></div>';
 }
 
 // Keeps the latest fetched requirements in memory so the confirm modal can

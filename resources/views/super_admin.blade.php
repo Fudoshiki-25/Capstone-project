@@ -926,11 +926,11 @@ body { margin:0; background:#f1f5f9; }
         </div>
         <div class="mb-3">
           <label class="form-label fw-medium" style="font-size:13px">Enrollment Start Date</label>
-          <input type="date" class="form-control" value="{{ $enrollmentPeriod && $enrollmentPeriod->start_date ? \Carbon\Carbon::parse($enrollmentPeriod->start_date)->format('Y-m-d') : '' }}" id="ep-start">
+          <input type="text" class="form-control" placeholder="Select date" readonly autocomplete="off" value="{{ $enrollmentPeriod && $enrollmentPeriod->start_date ? \Carbon\Carbon::parse($enrollmentPeriod->start_date)->format('Y-m-d') : '' }}" id="ep-start">
         </div>
         <div class="mb-3">
           <label class="form-label fw-medium" style="font-size:13px">Enrollment End Date</label>
-          <input type="date" class="form-control" value="{{ $enrollmentPeriod && $enrollmentPeriod->end_date ? \Carbon\Carbon::parse($enrollmentPeriod->end_date)->format('Y-m-d') : '' }}" id="ep-end">
+          <input type="text" class="form-control" placeholder="Select date" readonly autocomplete="off" value="{{ $enrollmentPeriod && $enrollmentPeriod->end_date ? \Carbon\Carbon::parse($enrollmentPeriod->end_date)->format('Y-m-d') : '' }}" id="ep-end">
         </div>
       </div>
       <div class="modal-footer border-0 px-4 pb-4">
@@ -948,6 +948,11 @@ body { margin:0; background:#f1f5f9; }
 </style>
 
 <script>
+var epStartPicker = flatpickr('#ep-start', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+var epEndPicker   = flatpickr('#ep-end',   { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+var annFromPicker  = flatpickr('#ann-from',  { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+var annUntilPicker = flatpickr('#ann-until', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y' });
+
 /* ── Bootstrap modal helper ── */
 function bsModal(id) { return bootstrap.Modal.getOrCreateInstance(document.getElementById(id)); }
 
@@ -1397,8 +1402,8 @@ function openCreateAnnouncementModal() {
   document.getElementById('ann-edit-id').value = '';
   document.getElementById('ann-title').value = '';
   document.getElementById('ann-message').value = '';
-  document.getElementById('ann-from').value = '';
-  document.getElementById('ann-until').value = '';
+  annFromPicker.setDate('', true);
+  annUntilPicker.setDate('', true);
   document.getElementById('ann-status').value = 'active';
   document.getElementById('ann-popup').checked = true;
   document.getElementById('annModalTitle').textContent = 'Create Announcement';
@@ -1412,8 +1417,8 @@ function openEditAnnouncementModal(id) {
   document.getElementById('ann-edit-id').value = id;
   document.getElementById('ann-title').value = a.title;
   document.getElementById('ann-message').value = a.message;
-  document.getElementById('ann-from').value = a.from;
-  document.getElementById('ann-until').value = a.until;
+  annFromPicker.setDate(a.from || '', true);
+  annUntilPicker.setDate(a.until || '', true);
   document.getElementById('ann-status').value = a.status;
   document.getElementById('ann-popup').checked = a.popup;
   document.getElementById('annModalTitle').textContent = 'Edit Announcement';
@@ -1504,11 +1509,11 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="row g-3 mb-3">
           <div class="col-6">
             <label class="form-label fw-medium" style="font-size:13px">Show From</label>
-            <input type="date" class="form-control" id="ann-from">
+            <input type="text" class="form-control" placeholder="Select date" readonly autocomplete="off" id="ann-from">
           </div>
           <div class="col-6">
             <label class="form-label fw-medium" style="font-size:13px">Show Until</label>
-            <input type="date" class="form-control" id="ann-until">
+            <input type="text" class="form-control" placeholder="Select date" readonly autocomplete="off" id="ann-until">
           </div>
         </div>
         <div class="mb-3">

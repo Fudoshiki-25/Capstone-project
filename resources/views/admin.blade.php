@@ -1313,7 +1313,7 @@ body { margin:0; background:#f1f5f9; }
           <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Last Name *</label><input type="text" class="form-control" id="addStudentLast" placeholder="Last Name"></div>
           <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">First Name *</label><input type="text" class="form-control" id="addStudentFirst" placeholder="First Name"></div>
           <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Middle Name</label><input type="text" class="form-control" id="addStudentMiddle" placeholder="Middle Name"></div>
-          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Date of Birth *</label><input type="date" class="form-control" id="addStudentDob"></div>
+          <div class="col-md-4"><label class="form-label fw-medium" style="font-size:13px">Date of Birth *</label><input type="text" class="form-control" id="addStudentDob" placeholder="Select date" readonly autocomplete="off"></div>
         </div>
       </div>
       <div class="modal-footer border-0 pt-0">
@@ -1481,6 +1481,8 @@ body { margin:0; background:#f1f5f9; }
 <!-- Bootstrap JS already loaded once, globally, by layout/app.blade.php -->
 <script src="{{ asset('vendor/chartjs/chart.umd.js') }}"></script>
 <script>
+
+flatpickr('#addStudentDob', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', maxDate: 'today', minDate: '1990-01-01', disableMobile: true });
 
 /* ── Live chart data from the server (real enrollment records) ── */
 const _chartData = {

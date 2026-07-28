@@ -7,6 +7,7 @@
 <title>@yield('title', 'Premiere Heights Learning Center, Inc. – Online Enrollment System')</title>
   <link href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet"/>
   <link href="{{ asset('vendor/bootstrap-icons/bootstrap-icons.min.css') }}" rel="stylesheet"/>
+  <link href="{{ asset('vendor/flatpickr/flatpickr.min.css') }}" rel="stylesheet"/>
   {{-- Single recaptcha load — the render= variant is for v3; the plain one is for v2 checkbox. Keep only ONE. --}}
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
   @stack('style')
@@ -654,6 +655,23 @@ img.brand-logo {
   background-image: none;
 }
 
+/* ============================================================
+   26. FLATPICKR — brand-matched date picker (Date of Birth, etc.)
+   ============================================================ */
+.flatpickr-calendar { box-shadow: 0 8px 24px rgba(0,0,0,.12); border-radius: 10px; }
+.flatpickr-months .flatpickr-month,
+.flatpickr-current-month .flatpickr-monthDropdown-months { color: var(--navy); fill: var(--navy); }
+.flatpickr-current-month input.cur-year { color: var(--navy); }
+.flatpickr-weekdays { background: var(--navy-light); }
+span.flatpickr-weekday { color: var(--navy); font-weight: 600; }
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+  background: var(--navy); border-color: var(--navy);
+}
+.flatpickr-day.today { border-color: var(--gold); }
+.flatpickr-day:hover { background: var(--navy-light); }
+.flatpickr-day.selected.today { background: var(--navy); }
+
 </style>
 </head>
 
@@ -730,6 +748,7 @@ img.brand-logo {
 @endunless
 <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"></div>
 <script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ asset('vendor/flatpickr/flatpickr.min.js') }}"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════
    TOAST SYSTEM

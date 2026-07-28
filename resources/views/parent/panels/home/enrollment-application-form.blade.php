@@ -89,7 +89,7 @@
       </div>
       <div class="col-md-3">
         <label class="form-label fw-medium" style="font-size:12px">Date of Birth <span class="text-danger">*</span></label>
-        <input type="date" id="f_birthday" name="birthday" required class="form-control form-control-sm" max="{{ date('Y-m-d') }}">
+        <input type="text" id="f_birthday" name="birthday" required readonly placeholder="Select date" class="form-control form-control-sm" autocomplete="off">
       </div>
       <div class="col-md-3">
         <label class="form-label fw-medium" style="font-size:12px">Birth Place <span class="text-danger">*</span></label>
