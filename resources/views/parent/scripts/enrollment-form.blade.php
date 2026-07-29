@@ -34,6 +34,98 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 
+// ── Local autosave (survives connectivity loss / accidental navigation) ────
+// The server-side draft (student_enrollment status='draft') only exists once
+// Step 1 is first saved — the real gap is everything typed BEFORE that first
+// save. This mirrors it into localStorage on every change and restores it
+// when starting a new enrollment. Stops once a server draft exists
+// (currentDraftId set) since the server copy is authoritative from then on.
+var PHLCI_AUTOSAVE_KEY = 'phlci_enroll_autosave_v1';
+var PHLCI_AUTOSAVE_FIELDS = ['f_first_name','f_middle_name','f_last_name','f_suffix','f_lrn',
+  'f_grade_level','f_birthday','f_birth_place','f_address','f_last_school','f_mother_name',
+  'f_father_name','f_guardian_name','f_emergency_contact'];
+var phlciAutosaveTimer = null;
+
+function collectAutosaveData() {
+  var data = { studentType: PHLCIStudentType, fields: {}, session: '', payMethod: '', paymentPlan: '' };
+  PHLCI_AUTOSAVE_FIELDS.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) data.fields[id] = el.value;
+  });
+  var session = document.querySelector('input[name="classSession"]:checked');
+  if (session) data.session = session.value;
+  var method = document.querySelector('input[name="payMethod"]:checked');
+  if (method) data.payMethod = method.value;
+  var plan = document.querySelector('input[name="paymentPlan"]:checked');
+  if (plan) data.paymentPlan = plan.value;
+  return data;
+}
+
+function isAutosaveDataBlank(data) {
+  var hasField = Object.keys(data.fields).some(function (k) { return (data.fields[k] || '').trim() !== ''; });
+  return !hasField && !data.session && !data.payMethod && !data.paymentPlan;
+}
+
+function scheduleAutosave() {
+  if (currentDraftId) return; // a server draft already exists — that's authoritative now
+  clearTimeout(phlciAutosaveTimer);
+  phlciAutosaveTimer = setTimeout(function () {
+    var data = collectAutosaveData();
+    if (isAutosaveDataBlank(data)) { localStorage.removeItem(PHLCI_AUTOSAVE_KEY); return; }
+    try { localStorage.setItem(PHLCI_AUTOSAVE_KEY, JSON.stringify(data)); }
+    catch (e) { /* storage full/unavailable — this is a UX nicety, fail silently */ }
+  }, 500);
+}
+
+function clearAutosavedDraft() {
+  localStorage.removeItem(PHLCI_AUTOSAVE_KEY);
+}
+
+// Restores unsaved progress typed before the connection/tab was lost. Only
+// called when starting a brand-new enrollment (resetPHLCIForm) — resuming an
+// existing server-side draft (loadDraftIntoForm) always wins over this.
+function restoreAutosavedDraft() {
+  var raw;
+  try { raw = localStorage.getItem(PHLCI_AUTOSAVE_KEY); } catch (e) { return; }
+  if (!raw) return;
+  var data;
+  try { data = JSON.parse(raw); } catch (e) { localStorage.removeItem(PHLCI_AUTOSAVE_KEY); return; }
+  if (isAutosaveDataBlank(data)) { localStorage.removeItem(PHLCI_AUTOSAVE_KEY); return; }
+
+  switchStudentType(data.studentType || 'old');
+  PHLCI_AUTOSAVE_FIELDS.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && data.fields[id] !== undefined) el.value = data.fields[id];
+  });
+  if (data.fields.f_birthday && birthdayPicker) birthdayPicker.setDate(data.fields.f_birthday, true);
+  if (data.session) {
+    document.querySelectorAll('input[name="classSession"]').forEach(function (r) { r.checked = (r.value === data.session); });
+  }
+  if (data.payMethod) {
+    document.querySelectorAll('.pay-method-card').forEach(function (card) {
+      var radio = card.querySelector('input[name="payMethod"]');
+      if (radio && radio.value === data.payMethod) selectPayMethod(card, data.payMethod);
+    });
+  }
+  if (data.paymentPlan) {
+    document.querySelectorAll('#paymentPlanCards .pay-method-card').forEach(function (card) {
+      var radio = card.querySelector('input[name="paymentPlan"]');
+      if (radio && radio.value === data.paymentPlan) selectPaymentPlan(card, data.paymentPlan);
+    });
+  }
+
+  showToast('success', 'We restored your unsaved progress from last time. Note: proof of payment can\'t be auto-saved — please re-attach it.');
+}
+
+// Delegated so every field is covered without individual listeners,
+// including ones toggled visible/hidden (Old vs New student).
+document.addEventListener('DOMContentLoaded', function () {
+  var wrapper = document.getElementById('step1-form-wrapper');
+  if (!wrapper) return;
+  wrapper.addEventListener('input', scheduleAutosave);
+  wrapper.addEventListener('change', scheduleAutosave);
+});
+
 function switchStudentType(type) {
   PHLCIStudentType = type;
   var newOnlyEls = document.querySelectorAll('.PHLCI-new-only');
@@ -296,6 +388,7 @@ function submitPHLCIForm() {
   .then(data => {
     var saved = data.enrollment;
     currentDraftId = saved.id;
+    clearAutosavedDraft(); // now safely on the server — local copy no longer needed
 
     // Show the green "Step 1 complete" banner with a short summary, hide the form.
     var summaryEl = document.getElementById('step1-complete-summary');
@@ -361,6 +454,10 @@ function resetPHLCIForm() {
   if (step2) step2.classList.add('d-none');
   var fixedBtn = document.getElementById('enrollNowFixedBtn');
   if (fixedBtn) fixedBtn.classList.add('d-none');
+
+  // Pick up any unsaved progress left over from a dropped connection/closed
+  // tab on this same child (blank fields above are overwritten if found).
+  restoreAutosavedDraft();
 }
 
 // ============================================================
