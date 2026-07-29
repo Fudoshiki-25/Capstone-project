@@ -17,11 +17,18 @@ var currentDraftId = null;
 // announcement pickers — same mistake, not repeating it here).
 var birthdayPicker;
 document.addEventListener('DOMContentLoaded', function () {
+  // Youngest accepted grade is Kinder — a child must be at least 4 years old
+  // by today to enroll anywhere in the school, so the picker can't even
+  // select a birthdate that young. Mirrored server-side in
+  // EnrollmentController (the actual enforcement point — this is just UX).
+  var earliestAllowedBirthdate = new Date();
+  earliestAllowedBirthdate.setFullYear(earliestAllowedBirthdate.getFullYear() - 4);
+
   birthdayPicker = flatpickr('#f_birthday', {
     dateFormat: 'Y-m-d',
     altInput: true,
     altFormat: 'F j, Y',
-    maxDate: 'today',
+    maxDate: earliestAllowedBirthdate,
     minDate: '1990-01-01',
     disableMobile: true,
   });

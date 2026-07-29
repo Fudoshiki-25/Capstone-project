@@ -56,7 +56,9 @@ class EnrollmentController extends Controller
             'lrn'                => 'nullable|string|max:20',
             'grade_level'        => 'required|string|max:20',
             'student_type'       => 'required|in:new,old',
-            'birthday'           => 'required|date',
+            // Youngest accepted grade is Kinder — a child must be at least 4
+            // years old by today's date to be enrolled anywhere in the school.
+            'birthday'           => ['required', 'date', 'before_or_equal:' . now()->subYears(4)->format('Y-m-d')],
             'birth_place'        => 'required|string|max:150',
             'last_school'        => 'nullable|string|max:150',
             'address'            => 'required|string',
@@ -68,6 +70,13 @@ class EnrollmentController extends Controller
             'payMethod'          => 'required|in:GCash,Maya,Bank Transfer,Cash',
             'paymentPlan'        => 'required|in:monthly,quarterly',
             'proof_of_payment'   => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ];
+    }
+
+    private function messages(): array
+    {
+        return [
+            'birthday.before_or_equal' => 'The student must be at least 4 years old to enroll.',
         ];
     }
 
@@ -130,7 +139,7 @@ class EnrollmentController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules(), $this->messages());
 
         $period = \App\Models\EnrollmentPeriod::current();
         if (! $period || ! $period->is_open) {
@@ -208,7 +217,7 @@ class EnrollmentController extends Controller
         // must reselect a file every time they edit, since browsers can't
         // pre-fill file inputs for security reasons.
 
-        $validated = $request->validate($rules);
+        $validated = $request->validate($rules, $this->messages());
 
         $data = [
             'first_name'         => $validated['first_name'],
@@ -418,9 +427,9 @@ class EnrollmentController extends Controller
             'last_name'   => 'required|string|max:100',
             'first_name'  => 'required|string|max:100',
             'middle_name' => 'nullable|string|max:100',
-            'birthday'    => 'required|date',
+            'birthday'    => ['required', 'date', 'before_or_equal:' . now()->subYears(4)->format('Y-m-d')],
             'email'       => 'required|email',
-        ]);
+        ], $this->messages());
 
         $parent = \App\Models\Parents::where('email', $validated['email'])->first();
 

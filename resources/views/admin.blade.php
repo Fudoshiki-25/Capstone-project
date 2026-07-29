@@ -1479,7 +1479,12 @@ body { margin:0; background:#f1f5f9; }
 <script>
 
 document.addEventListener('DOMContentLoaded', function () {
-  flatpickr('#addStudentDob', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', maxDate: 'today', minDate: '1990-01-01', disableMobile: true });
+  // Youngest accepted grade is Kinder — a child must be at least 4 years old
+  // by today to enroll anywhere in the school (enforced server-side too, in
+  // EnrollmentController::adminStore()).
+  var earliestAllowedBirthdate = new Date();
+  earliestAllowedBirthdate.setFullYear(earliestAllowedBirthdate.getFullYear() - 4);
+  flatpickr('#addStudentDob', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'F j, Y', maxDate: earliestAllowedBirthdate, minDate: '1990-01-01', disableMobile: true });
 });
 
 /* ── Live chart data from the server (real enrollment records) ── */
