@@ -266,9 +266,16 @@ function loadDraftIntoForm(enrollmentId) {
     var preview = document.getElementById('payProofPreview');
     if (preview) preview.style.display = 'none';
 
-    // Show the editable form (not the completed banner) since we're
-    // actively reviewing/editing right now.
-    toggleStep1Form(true);
+    // Show the collapsed "Step 1 Complete" summary, same as right after a
+    // fresh submit — resuming a draft should look like "this part is done",
+    // not reopen a blank-looking fill-out form. The parent can still get to
+    // the editable form via the banner's "Review / Edit" button, which is
+    // now pre-filled with the values set above.
+    var summaryEl = document.getElementById('step1-complete-summary');
+    if (summaryEl) {
+      summaryEl.textContent = (e.first_name + ' ' + e.last_name).trim() + ' · ' + e.grade_level + ' · ' + e.classSession + ' Session';
+    }
+    toggleStep1Form(false);
 
     // Reveal Step 2 and load its uploaded documents for this draft.
     revealStep2(currentDraftId, (e.first_name + ' ' + e.last_name).trim(), e.grade_level, e.student_type);
@@ -504,7 +511,7 @@ var DOC_LABELS = {
 
 function buildDocRow(docType, accentColor, uploadedInfo) {
   var label    = DOC_LABELS[docType] || docType;
-  if (getOptionalDocTypes().includes(docType)) label += ' (optional)';
+  if (docType !== 'birth_certificate' && getOptionalDocTypes().includes(docType)) label += ' (optional)';
   var uploaded = uploadedInfo && uploadedInfo[docType];
   var rowId    = 'doc-row-' + docType;
   var needsResubmit = uploaded && uploaded.status === 'needs_resubmit';
