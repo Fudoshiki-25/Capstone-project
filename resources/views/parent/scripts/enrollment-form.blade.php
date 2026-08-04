@@ -489,12 +489,11 @@ function setActiveEnrollment(id, name, grade, studentType) {
 var ALL_DOC_TYPES = ['report_card', 'birth_certificate', 'good_moral', 'medical_certificate'];
 
 // Mirrors EnrollmentController::requiredDocumentTypes() on the backend:
-//   - Kinder: PSA Birth Certificate + Medical Certificate
-//   - Old/returning student (any grade): Report Card only
-//   - New student, Grade 1+: Report Card + PSA Birth Certificate
+//   - Kinder: PSA Birth Certificate + Medical Certificate (no Report Card —
+//     there's no prior school record for an incoming Kinder student)
+//   - Grade 1+ (old or new student): Report Card + PSA Birth Certificate
 function getRequiredDocTypes() {
   if (activeEnrollmentGrade === 'Kinder') return ['birth_certificate', 'medical_certificate'];
-  if (activeEnrollmentStudentType === 'old') return ['report_card'];
   return ['report_card', 'birth_certificate'];
 }
 function getOptionalDocTypes() {

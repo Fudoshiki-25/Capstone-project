@@ -24,20 +24,16 @@ class EnrollmentController extends Controller
 
     /**
      * Documents required before "Enroll Now" can be clicked, depending on
-     * grade level and whether the student is new or already has a record
-     * at the school:
-     *   - Kinder: PSA Birth Certificate + Medical Certificate
-     *   - Old/returning student (any grade): Report Card only
-     *   - New student, Grade 1+: Report Card + PSA Birth Certificate
+     * grade level:
+     *   - Kinder: PSA Birth Certificate + Medical Certificate (no Report
+     *     Card — there's no prior school record for an incoming Kinder
+     *     student)
+     *   - Grade 1+ (old or new student): Report Card + PSA Birth Certificate
      */
     public static function requiredDocumentTypes(string $gradeLevel, string $studentType): array
     {
         if ($gradeLevel === 'Kinder') {
             return ['birth_certificate', 'medical_certificate'];
-        }
-
-        if ($studentType === 'old') {
-            return ['report_card'];
         }
 
         return ['report_card', 'birth_certificate'];
