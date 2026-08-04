@@ -16,10 +16,16 @@
                 <div class="text-muted" style="font-size:12px">Step 1 saved. Finish uploading requirements to complete enrollment.</div>
               </div>
             </div>
-            <button class="btn btn-sm fw-semibold" style="background:#92400e;color:#fff;font-size:12.5px"
-              onclick="resumeDraftEnrollment({{ $draft->id }})">
-              <i class="bi bi-arrow-right-circle me-1"></i>Continue
-            </button>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm fw-semibold" style="background:transparent;color:#92400e;border:1px solid #fcd34d;font-size:12.5px"
+                onclick="deleteEnrollment({{ $draft->id }}, '{{ addslashes($draft->first_name . ' ' . $draft->last_name) }}')">
+                <i class="bi bi-trash3 me-1"></i>Discard
+              </button>
+              <button class="btn btn-sm fw-semibold" style="background:#92400e;color:#fff;font-size:12.5px"
+                onclick="resumeDraftEnrollment({{ $draft->id }})">
+                <i class="bi bi-arrow-right-circle me-1"></i>Continue
+              </button>
+            </div>
           </div>
           @endforeach
         </div>
