@@ -8,9 +8,9 @@ use App\Models\GradeEnrollmentSetting;
 use App\Models\Parents;
 use App\Models\User;
 use App\Notifications\NewAnnouncementPosted;
+use App\Support\SafeNotify;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -199,7 +199,7 @@ class SuperAdminController extends Controller
         // Only email/push parents for announcements that are actually live —
         // an "inactive" (draft) announcement shouldn't notify anyone yet.
         if ($announcement->status === 'active') {
-            Notification::send(Parents::all(), new NewAnnouncementPosted($announcement));
+            SafeNotify::to(Parents::all(), new NewAnnouncementPosted($announcement));
         }
 
         return response()->json($this->announcementPayload($announcement));
@@ -244,7 +244,7 @@ class SuperAdminController extends Controller
         // Notify parents the moment a draft announcement first goes live,
         // same as if it had been created active from the start.
         if ($wasInactive && $announcement->status === 'active') {
-            Notification::send(Parents::all(), new NewAnnouncementPosted($announcement));
+            SafeNotify::to(Parents::all(), new NewAnnouncementPosted($announcement));
         }
 
         return response()->json(['success' => true, 'status' => $announcement->status]);

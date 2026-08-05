@@ -7,6 +7,7 @@ use App\Models\StudentEnrollment;
 use App\Notifications\EnrollmentApproved;
 use App\Notifications\EnrollmentSubmitted;
 use App\Support\ImageUploadStorer;
+use App\Support\SafeNotify;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -314,7 +315,7 @@ class EnrollmentController extends Controller
         // (monthly/quarterly, chosen in Step 1) and grade level are final.
         \App\Models\TuitionPlan::generateForEnrollment($enrollment);
 
-        $enrollment->user->notify(new EnrollmentSubmitted($enrollment));
+        SafeNotify::to($enrollment->user, new EnrollmentSubmitted($enrollment));
 
         return response()->json([
             'message'    => 'Enrollment complete! Your child has been added to your Home tab and is awaiting admin review.',
@@ -496,7 +497,7 @@ class EnrollmentController extends Controller
             'success'
         );
 
-        $enrollment->user->notify(new EnrollmentApproved($enrollment));
+        SafeNotify::to($enrollment->user, new EnrollmentApproved($enrollment));
 
         return response()->json([
             'success' => true,

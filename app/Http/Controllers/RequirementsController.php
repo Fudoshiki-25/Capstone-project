@@ -6,6 +6,7 @@ use App\Models\EnrollmentRequirement;
 use App\Models\StudentEnrollment;
 use App\Notifications\DocumentNeedsResubmit;
 use App\Support\ImageUploadStorer;
+use App\Support\SafeNotify;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -133,7 +134,7 @@ class RequirementsController extends Controller
             'reviewed_at' => now(),
         ]);
 
-        $requirement->enrollment->user->notify(new DocumentNeedsResubmit($requirement));
+        SafeNotify::to($requirement->enrollment->user, new DocumentNeedsResubmit($requirement));
 
         return response()->json([
             'success' => true,
