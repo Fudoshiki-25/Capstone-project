@@ -468,7 +468,7 @@ body { margin:0; background:#f1f5f9; }
               <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Name</th>
               <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Email</th>
               <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Scope</th>
-              <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Status</th>
+              <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b" title="Whether the account is enabled — see the small dot on their avatar for whether they're online right now">Account</th>
               <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Last Login</th>
               <th style="font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Actions</th>
             </tr>
@@ -498,7 +498,7 @@ body { margin:0; background:#f1f5f9; }
               </td>
               <td>{{ $admin->email }}</td>
               <td><span class="badge rounded-pill px-3" style="background:{{ $scopeColor['bg'] }};color:{{ $scopeColor['text'] }}">{{ $admin->assigned_grade ?? 'All Grades' }}</span></td>
-              <td>@if($isActive)<span class="badge rounded-pill px-3" style="background:#dcfce7;color:#166534;font-weight:600">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
+              <td title="Whether this admin's account is enabled — not whether they're online right now">@if($isActive)<span class="badge rounded-pill px-3" style="background:#dcfce7;color:#166534;font-weight:600">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
               <td class="text-muted" style="font-size:12px">{{ $admin->last_login_at ? \Carbon\Carbon::parse($admin->last_login_at)->format('M j, Y – g:i A') : 'Never' }}</td>
               <td>
                 <div class="action-menu-wrap position-relative">
@@ -632,10 +632,10 @@ body { margin:0; background:#f1f5f9; }
             @forelse($activityLogs as $log)
             <tr>
               <td class="text-muted" style="font-size:12px;white-space:nowrap">{{ $log->created_at->format('M j, Y – g:i A') }}</td>
-              <td class="fw-medium">{{ $log->actor_name }}</td>
-              <td><span class="badge rounded-pill px-2" style="background:{{ $logBg[$log->severity] ?? '#f1f5f9' }};color:{{ $logColors[$log->severity] ?? '#475569' }};font-size:11px">{{ $log->actor_role }}</span></td>
-              <td class="fw-semibold" style="color:{{ $logColors[$log->severity] ?? '#475569' }}">{{ $log->action }}</td>
-              <td class="text-muted" style="font-size:12px">{{ $log->description }}</td>
+              <td class="fw-medium">{{ $log->user_name }}</td>
+              <td><span class="badge rounded-pill px-2" style="background:{{ $logBg[$log->type] ?? '#f1f5f9' }};color:{{ $logColors[$log->type] ?? '#475569' }};font-size:11px">{{ $log->user_role }}</span></td>
+              <td class="fw-semibold" style="color:{{ $logColors[$log->type] ?? '#475569' }}">{{ $log->action }}</td>
+              <td class="text-muted" style="font-size:12px">{{ $log->details }}</td>
             </tr>
             @empty
             <tr><td colspan="5" class="text-center text-muted py-4">No activity recorded yet.</td></tr>
