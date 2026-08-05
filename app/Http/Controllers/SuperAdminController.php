@@ -5,9 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Announcement;
 use App\Models\EnrollmentPeriod;
 use App\Models\GradeEnrollmentSetting;
+use App\Models\Parents;
 use App\Models\User;
+use App\Notifications\NewAnnouncementPosted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -193,6 +196,12 @@ class SuperAdminController extends Controller
 
         \App\Models\ActivityLog::record($request->user(), 'Created Announcement', $announcement->title, 'purple');
 
+        // Only email/push parents for announcements that are actually live —
+        // an "inactive" (draft) announcement shouldn't notify anyone yet.
+        if ($announcement->status === 'active') {
+            Notification::send(Parents::all(), new NewAnnouncementPosted($announcement));
+        }
+
         return response()->json($this->announcementPayload($announcement));
     }
 
@@ -226,9 +235,17 @@ class SuperAdminController extends Controller
 
     public function toggleAnnouncementStatus(Request $request, Announcement $announcement)
     {
+        $wasInactive = $announcement->status !== 'active';
+
         $announcement->update(['status' => $announcement->status === 'active' ? 'inactive' : 'active']);
 
         \App\Models\ActivityLog::record($request->user(), 'Toggled Announcement Status', $announcement->title, 'info');
+
+        // Notify parents the moment a draft announcement first goes live,
+        // same as if it had been created active from the start.
+        if ($wasInactive && $announcement->status === 'active') {
+            Notification::send(Parents::all(), new NewAnnouncementPosted($announcement));
+        }
 
         return response()->json(['success' => true, 'status' => $announcement->status]);
     }

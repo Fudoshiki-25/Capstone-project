@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 class Parents extends Authenticatable
 {
-    use Notifiable;
+    use Notifiable, HasPushSubscriptions;
 
     protected $table = 'parents'; // ← ADD THIS LINE
 

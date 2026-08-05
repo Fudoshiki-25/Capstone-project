@@ -9,6 +9,7 @@ use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\TuitionController;
+use App\Http\Controllers\PushSubscriptionController;
 // ── PUBLIC ROUTES ─────────────────────────────────────────────────────────────
 Route::get('/',               [Authcontroller::class, 'landingpage'])->name('landingpage');
 Route::get('/logout',         [Authcontroller::class, 'logout'])->name('logout');
@@ -55,6 +56,10 @@ Route::middleware(['auth:parent'])->group(function () {
  Route::post('/profile/upload-pic',      [Authcontroller::class, 'uploadProfilePic'])->name('parent.profile.uploadPic');
 Route::post('/profile/remove-pic',      [Authcontroller::class, 'removeProfilePic'])->name('parent.profile.removePic');
 Route::post('/profile/update-password', [Authcontroller::class, 'updatePassword'])->name('parent.profile.updatePassword');
+
+    // Web push subscription (enable/disable browser notifications)
+    Route::post('/push/subscribe',   [PushSubscriptionController::class, 'subscribe'])->name('push.subscribe');
+    Route::post('/push/unsubscribe', [PushSubscriptionController::class, 'unsubscribe'])->name('push.unsubscribe');
 });
 
 // ── ADMIN ROUTES — protected by web guard ─────────────────────────────────────

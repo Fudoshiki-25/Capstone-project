@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EnrollmentRequirement;
 use App\Models\StudentEnrollment;
+use App\Notifications\DocumentNeedsResubmit;
 use App\Support\ImageUploadStorer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -131,6 +132,8 @@ class RequirementsController extends Controller
             'feedback'    => $request->input('feedback'),
             'reviewed_at' => now(),
         ]);
+
+        $requirement->enrollment->user->notify(new DocumentNeedsResubmit($requirement));
 
         return response()->json([
             'success' => true,

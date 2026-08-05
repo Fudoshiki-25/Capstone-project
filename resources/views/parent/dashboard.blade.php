@@ -89,6 +89,7 @@
 @include('parent.scripts.requirements')
 @include('parent.scripts.toast')
 @include('parent.scripts.enrollment-form')
+@include('parent.scripts.push-notifications')
 
 @stack('scripts')
 

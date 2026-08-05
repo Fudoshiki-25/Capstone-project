@@ -10,6 +10,9 @@
     </div>
   </div>
   <div class="d-flex align-items-center gap-2">
+    <button class="btn btn-sm text-secondary" id="pushNotifyBtn" type="button" title="Enable notifications" onclick="togglePushSubscription()">
+      <i class="bi bi-bell" id="pushNotifyIcon" style="font-size:18px"></i>
+    </button>
     <div id="topbarAvatar" class="brand-logo" style="background:#64748b"> @if($user->profile_pic)
         <img src="{{ asset('storage/' . $user->profile_pic) }}"
              style="width:100%;height:100%;object-fit:cover;border-radius:50%;" alt="Profile">
