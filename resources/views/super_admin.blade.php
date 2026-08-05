@@ -101,7 +101,7 @@ body { margin:0; background:#f1f5f9; }
   background: #1a1240;
   display: flex; flex-direction: column;
   position: fixed; top:0; left:0;
-  height: 100vh; z-index:200;
+  height: 100vh; height: 100dvh; z-index:200;
   overflow-y: auto;
   transition: transform .28s cubic-bezier(.4,0,.2,1);
 }
@@ -162,6 +162,7 @@ body { margin:0; background:#f1f5f9; }
 
 .sb-bottom {
   margin-top:auto; padding:12px 12px 16px;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
   border-top:1px solid rgba(255,255,255,.08);
 }
 .sb-logout {
