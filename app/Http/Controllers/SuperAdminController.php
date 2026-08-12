@@ -23,27 +23,30 @@ class SuperAdminController extends Controller
     public function storeAdmin(Request $request)
     {
         $data = $request->validate([
-            'first_name'     => 'required|string|max:100',
-            'last_name'      => 'required|string|max:100',
-            'email'          => 'required|email|unique:users,email',
-            'assigned_grade' => 'nullable|string|max:20',
-            'password'       => ['required', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'first_name'        => 'required|string|max:100',
+            'last_name'         => 'required|string|max:100',
+            'email'             => 'required|email|unique:users,email',
+            'assigned_grades'   => 'nullable|array',
+            'assigned_grades.*' => 'string|max:20',
+            'password'          => ['required', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
+        $assignedGrades = !empty($data['assigned_grades']) ? array_values($data['assigned_grades']) : null;
+
         $admin = User::create([
-            'first_name'     => $data['first_name'],
-            'last_name'      => $data['last_name'],
-            'email'          => $data['email'],
-            'password'       => Hash::make($data['password']),
-            'role'           => 'admin',
-            'assigned_grade' => ($data['assigned_grade'] ?? null) ?: null,
-            'is_active'      => true,
+            'first_name'      => $data['first_name'],
+            'last_name'       => $data['last_name'],
+            'email'           => $data['email'],
+            'password'        => Hash::make($data['password']),
+            'role'            => 'admin',
+            'assigned_grades' => $assignedGrades,
+            'is_active'       => true,
         ]);
 
         \App\Models\ActivityLog::record(
             $request->user(),
             'Created Admin Account',
-            "New admin: {$admin->first_name} {$admin->last_name}" . ($admin->assigned_grade ? " assigned to {$admin->assigned_grade}" : ' (All Grades)'),
+            "New admin: {$admin->first_name} {$admin->last_name}" . ($assignedGrades ? ' assigned to ' . implode(', ', $assignedGrades) : ' (All Grades)'),
             'purple'
         );
 
@@ -53,13 +56,14 @@ class SuperAdminController extends Controller
     public function updateAdmin(Request $request, User $admin)
     {
         $data = $request->validate([
-            'email'          => ['required', 'email', Rule::unique('users', 'email')->ignore($admin->id)],
-            'assigned_grade' => 'nullable|string|max:20',
+            'email'             => ['required', 'email', Rule::unique('users', 'email')->ignore($admin->id)],
+            'assigned_grades'   => 'nullable|array',
+            'assigned_grades.*' => 'string|max:20',
         ]);
 
         $admin->update([
-            'email'          => $data['email'],
-            'assigned_grade' => ($data['assigned_grade'] ?? null) ?: null,
+            'email'           => $data['email'],
+            'assigned_grades' => !empty($data['assigned_grades']) ? array_values($data['assigned_grades']) : null,
         ]);
 
         \App\Models\ActivityLog::record($request->user(), 'Updated Admin Account', "Admin: {$admin->first_name} {$admin->last_name}", 'info');

@@ -50,7 +50,7 @@ class TuitionPlan extends Model
         $fee = GradeTuitionFee::where('grade_level', $enrollment->grade_level)->first();
         $totalAmount = $fee->annual_amount ?? 0;
 
-        $period = EnrollmentPeriod::first();
+        $period = EnrollmentPeriod::current();
         $downPayment = $period?->enrollment_fee ?? 0;
         $downPayment = min($downPayment, $totalAmount); // never negative balance
 
@@ -72,21 +72,30 @@ class TuitionPlan extends Model
         // floating-point drift (e.g. 123.0000000000926) when either date
         // carries a sub-day time component, which intdiv() rejects.
         $totalDays = max((int) round($start->diffInDays($end)), 1);
-        $step      = intdiv($totalDays, max($count, 1));
 
         // Split the remaining balance into equal installments, adjusting the
         // last one so the sum matches exactly (avoids rounding drift).
         $baseAmount = round($balance / $count, 2);
         $runningSum = 0;
+        $previousOffsetDays = -1;
 
         for ($i = 1; $i <= $count; $i++) {
             $amount = $i === $count ? round($balance - $runningSum, 2) : $baseAmount;
             $runningSum += $amount;
 
+            // Offset computed per-installment (not via a shared intdiv'd
+            // step), and forced strictly increasing via the max() below —
+            // proportional rounding alone can still round two adjacent
+            // installments to the same day when the period is shorter than
+            // $count (e.g. a 3-day period split 4 ways), so each offset is
+            // clamped to at least one day past the previous installment's.
+            $dueOffsetDays = max((int) round($totalDays * $i / $count), $previousOffsetDays + 1);
+            $previousOffsetDays = $dueOffsetDays;
+
             $plan->payments()->create([
                 'installment_number' => $i,
                 'amount_due'         => $amount,
-                'due_date'           => $start->copy()->addDays($step * $i),
+                'due_date'           => $start->copy()->addDays($dueOffsetDays),
                 'status'             => 'unpaid',
             ]);
         }

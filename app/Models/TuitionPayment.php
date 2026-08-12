@@ -19,13 +19,15 @@ class TuitionPayment extends Model
         'paid_at',
         'verified_by',
         'feedback',
+        'reminder_sent_at',
     ];
 
     protected $casts = [
-        'amount_due'   => 'decimal:2',
-        'due_date'     => 'date',
-        'submitted_at' => 'datetime',
-        'paid_at'      => 'datetime',
+        'amount_due'       => 'decimal:2',
+        'due_date'         => 'date',
+        'submitted_at'     => 'datetime',
+        'paid_at'          => 'datetime',
+        'reminder_sent_at' => 'datetime',
     ];
 
     public function plan(): BelongsTo

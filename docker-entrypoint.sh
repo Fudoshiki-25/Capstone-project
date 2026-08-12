@@ -71,4 +71,11 @@ ls -la /etc/apache2/mods-enabled/ | grep -i mpm
 echo "=== apache2ctl -M at container start ==="
 apache2ctl -M 2>&1 || true
 
+# Runs the Laravel scheduler once a minute in the background — this is what
+# actually fires scheduled jobs (e.g. tuition due-date reminders, registered
+# in routes/console.php). There's no separate worker/cron service in this
+# single-container deployment, so this loop is it. Started with & before
+# exec so it survives as a child process once exec replaces this shell.
+( while true; do php artisan schedule:run >> /var/www/html/storage/logs/schedule.log 2>&1; sleep 60; done ) &
+
 exec "$@"

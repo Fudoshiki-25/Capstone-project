@@ -13,7 +13,7 @@ use App\Models\GradeTuitionFee;
 
 /* ── Admin accounts (User model, role = admin) ──
    NOTE: assumes `users` table has: name, email, role, status ('active'/'inactive'),
-   last_login_at, and a nullable assigned_grade. See migration checklist at the end. */
+   last_login_at, and a nullable JSON assigned_grades array (null/empty = All Grades). */
 $admins            = User::where('role', 'admin')->orderBy('first_name')->orderBy('last_name')->get();
 $activeAdminsCount  = $admins->where('is_active', true)->count();
 
@@ -480,13 +480,8 @@ body { margin:0; background:#f1f5f9; }
               $avColors = ['av-blue','av-green','av-orange','av-purple','av-gold','av-red'];
               $avColor  = $avColors[$admin->id % count($avColors)];
               $isActive = (bool) $admin->is_active;
-              $scopeColors = [
-                  'Grade 7'  => ['bg' => '#dcfce7', 'text' => '#2d6a2d'],
-                  'Grade 8'  => ['bg' => '#fef9e0', 'text' => '#d4a900'],
-                  'Grade 9'  => ['bg' => '#fee2e2', 'text' => '#b91c1c'],
-                  'Grade 10' => ['bg' => '#e8ecf7', 'text' => '#1a2a5e'],
-              ];
-              $scopeColor = $scopeColors[$admin->assigned_grade] ?? ['bg' => '#ede9fe', 'text' => '#7c3aed'];
+              $scopeColor = !empty($admin->assigned_grades) ? ['bg' => '#dcfce7', 'text' => '#2d6a2d'] : ['bg' => '#ede9fe', 'text' => '#7c3aed'];
+              $scopeLabel = !empty($admin->assigned_grades) ? implode(', ', $admin->assigned_grades) : 'All Grades';
             @endphp
             <tr>
               <td>
@@ -497,14 +492,14 @@ body { margin:0; background:#f1f5f9; }
                 @if($admin->isOnline())<span class="badge rounded-pill ms-1" style="background:#dcfce7;color:#166534;font-size:10px;font-weight:600;padding:2px 8px">Online</span>@endif
               </td>
               <td>{{ $admin->email }}</td>
-              <td><span class="badge rounded-pill px-3" style="background:{{ $scopeColor['bg'] }};color:{{ $scopeColor['text'] }}">{{ $admin->assigned_grade ?? 'All Grades' }}</span></td>
+              <td><span class="badge rounded-pill px-3" style="background:{{ $scopeColor['bg'] }};color:{{ $scopeColor['text'] }}" title="{{ $scopeLabel }}">{{ $scopeLabel }}</span></td>
               <td title="Whether this admin's account is enabled — not whether they're online right now">@if($isActive)<span class="badge rounded-pill px-3" style="background:#dcfce7;color:#166534;font-weight:600">Active</span>@else<span class="badge" style="background:#fef9c3;color:#713f12;font-size:12px;padding:4px 10px;border-radius:20px">Inactive</span>@endif</td>
               <td class="text-muted" style="font-size:12px">{{ $admin->last_login_at ? \Carbon\Carbon::parse($admin->last_login_at)->format('M j, Y – g:i A') : 'Never' }}</td>
               <td>
                 <div class="action-menu-wrap position-relative">
                   <button class="btn btn-sm btn-light border action-dots-btn" onclick="toggleActionMenu(event,this)"><i class="bi bi-three-dots-vertical"></i></button>
                   <div class="action-dropdown shadow-sm">
-                    <button class="action-item" onclick="closeMenuThen(()=>openEditAdminModal({{ $admin->id }},'{{ $admin->name }}','{{ $admin->assigned_grade ?? '' }}','{{ $admin->email }}'))"><i class="bi bi-pencil text-navy"></i> Edit</button>
+                    <button class="action-item" data-admin-id="{{ $admin->id }}" data-admin-name="{{ $admin->name }}" data-admin-email="{{ $admin->email }}" data-admin-grades="{{ json_encode($admin->assigned_grades ?? []) }}" onclick="closeMenuThen(()=>openEditAdminModal(this))"><i class="bi bi-pencil text-navy"></i> Edit</button>
                     <button class="action-item" onclick="closeMenuThen(()=>resetAdminPassword({{ $admin->id }},'{{ $admin->name }}'))"><i class="bi bi-key text-warning"></i> Reset Password</button>
                     @if($isActive)
                     <button class="action-item text-danger" onclick="closeMenuThen(()=>deactivateAdmin({{ $admin->id }},'{{ $admin->name }}'))"><i class="bi bi-slash-circle"></i> Deactivate</button>
@@ -838,7 +833,7 @@ body { margin:0; background:#f1f5f9; }
           </div>
           <div>
             <div style="font-size:17px;font-weight:800;color:#fff">Create Admin Account</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.7)">Assign to one grade level</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7)">Assign to one or more grade levels</div>
           </div>
         </div>
       </div>
@@ -857,22 +852,16 @@ body { margin:0; background:#f1f5f9; }
             <input type="email" class="form-control" placeholder="admin@phlci.edu.ph" id="ca-email">
           </div>
           <div class="col-12">
-            <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Level *</label>
-            <select class="form-select" id="ca-grade">
-              <option value="">Select grade level</option>
-              <option>Kinder</option>
-              <option>Grade 1</option>
-              <option>Grade 2</option>
-              <option>Grade 3</option>
-              <option>Grade 4</option>
-              <option>Grade 5</option>
-              <option>Grade 6</option>
-              <option>Grade 7</option>
-              <option>Grade 8</option>
-              <option>Grade 9</option>
-              <option>Grade 10</option>
-            </select>
-            <div class="form-text"><i class="bi bi-info-circle me-1"></i>Only one admin per grade level is recommended.</div>
+            <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Levels</label>
+            <div class="d-flex flex-wrap gap-2" id="ca-grades">
+              @foreach($gradeLevels as $g)
+              <label class="grade-chip" style="cursor:pointer;font-size:12.5px;padding:6px 12px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;user-select:none">
+                <input type="checkbox" class="ca-grade-check d-none" value="{{ $g }}" onchange="this.closest('label').style.background=this.checked?'#7c3aed':'#fff';this.closest('label').style.color=this.checked?'#fff':'';this.closest('label').style.borderColor=this.checked?'#7c3aed':'#e2e8f0'">
+                {{ $g }}
+              </label>
+              @endforeach
+            </div>
+            <div class="form-text"><i class="bi bi-info-circle me-1"></i>Leave all unchecked for "All Grades" (unrestricted) access.</div>
           </div>
           <div class="col-md-6">
             <label class="form-label fw-medium" style="font-size:13px">Temporary Password *</label>
@@ -916,12 +905,16 @@ body { margin:0; background:#f1f5f9; }
           <input type="email" class="form-control" id="ea-email">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Level</label>
-          <select class="form-select" id="ea-grade">
-            <option>Kinder</option><option>Grade 1</option><option>Grade 2</option><option>Grade 3</option>
-            <option>Grade 4</option><option>Grade 5</option><option>Grade 6</option>
-            <option>Grade 7</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option>
-          </select>
+          <label class="form-label fw-medium" style="font-size:13px">Assigned Grade Levels</label>
+          <div class="d-flex flex-wrap gap-2" id="ea-grades">
+            @foreach($gradeLevels as $g)
+            <label class="grade-chip" style="cursor:pointer;font-size:12.5px;padding:6px 12px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;user-select:none">
+              <input type="checkbox" class="ea-grade-check d-none" value="{{ $g }}" onchange="this.closest('label').style.background=this.checked?'#7c3aed':'#fff';this.closest('label').style.color=this.checked?'#fff':'';this.closest('label').style.borderColor=this.checked?'#7c3aed':'#e2e8f0'">
+              {{ $g }}
+            </label>
+            @endforeach
+          </div>
+          <div class="form-text"><i class="bi bi-info-circle me-1"></i>Leave all unchecked for "All Grades" (unrestricted) access.</div>
         </div>
       </div>
       <div class="modal-footer border-0 px-4 pb-4">
@@ -1288,12 +1281,12 @@ function submitCreateAdmin() {
   const fname = document.getElementById('ca-fname').value.trim();
   const lname = document.getElementById('ca-lname').value.trim();
   const email = document.getElementById('ca-email').value.trim();
-  const grade = document.getElementById('ca-grade').value;
+  const grades = Array.from(document.querySelectorAll('#ca-grades .ca-grade-check:checked')).map(c => c.value);
   const pass  = document.getElementById('ca-pass').value;
   const pass2 = document.getElementById('ca-pass2').value;
   if (!fname || !lname || !email || !pass) { alert('Please fill in all required fields.'); return; }
   if (pass !== pass2) { alert('Passwords do not match.'); return; }
-  apiFetch('/superadmin/admins', 'POST', { first_name: fname, last_name: lname, email, assigned_grade: grade || null, password: pass }).then(() => {
+  apiFetch('/superadmin/admins', 'POST', { first_name: fname, last_name: lname, email, assigned_grades: grades, password: pass }).then(() => {
     bootstrap.Modal.getInstance(document.getElementById('createAdminModal')).hide();
     setTimeout(() => { phlciToast(`Admin account created for ${fname} ${lname}!`, 'success'); location.reload(); }, 350);
   }).catch(() => alert('Could not create the admin account. The email may already be in use.'));
@@ -1301,18 +1294,21 @@ function submitCreateAdmin() {
 
 /* ── Edit Admin ── */
 let _editAdminId = null;
-function openEditAdminModal(id, name, grade, email) {
-  _editAdminId = id;
-  document.getElementById('ea-name-label').textContent = name;
-  document.getElementById('ea-email').value = email;
-  const gradeSelect = document.getElementById('ea-grade');
-  if (gradeSelect) gradeSelect.value = grade || '';
+function openEditAdminModal(btn) {
+  _editAdminId = btn.dataset.adminId;
+  document.getElementById('ea-name-label').textContent = btn.dataset.adminName;
+  document.getElementById('ea-email').value = btn.dataset.adminEmail;
+  const grades = JSON.parse(btn.dataset.adminGrades || '[]');
+  document.querySelectorAll('#ea-grades .ea-grade-check').forEach(c => {
+    c.checked = grades.includes(c.value);
+    c.dispatchEvent(new Event('change'));
+  });
   bsModal('editAdminModal').show();
 }
 function submitEditAdmin() {
   const email = document.getElementById('ea-email').value.trim();
-  const grade = document.getElementById('ea-grade').value;
-  apiFetch(`/superadmin/admins/${_editAdminId}`, 'PUT', { email, assigned_grade: grade || null }).then(() => {
+  const grades = Array.from(document.querySelectorAll('#ea-grades .ea-grade-check:checked')).map(c => c.value);
+  apiFetch(`/superadmin/admins/${_editAdminId}`, 'PUT', { email, assigned_grades: grades }).then(() => {
     bootstrap.Modal.getInstance(document.getElementById('editAdminModal')).hide();
     setTimeout(() => { phlciToast('Admin account updated successfully.', 'success'); location.reload(); }, 350);
   }).catch(() => alert('Could not update the admin account.'));

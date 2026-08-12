@@ -152,6 +152,12 @@ class TuitionController extends Controller
             abort(403, 'You do not have permission to update this payment.');
         }
 
+        if ($payment->status === 'paid') {
+            return response()->json([
+                'message' => 'This installment has already been verified and can no longer be changed.',
+            ], 422);
+        }
+
         $path = ImageUploadStorer::store(
             $request->file('file'),
             'tuition_payments/' . $parent->id . '/' . $payment->tuition_plan_id,
@@ -178,6 +184,16 @@ class TuitionController extends Controller
      */
     public function verify(Request $request, TuitionPayment $payment)
     {
+        if (! $request->user()->canManageGrade($payment->plan->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
+        if ($payment->status !== 'pending') {
+            return response()->json([
+                'message' => 'Only a submitted (pending) payment can be verified.',
+            ], 422);
+        }
+
         $payment->update([
             'status'      => 'paid',
             'paid_at'     => now(),
@@ -200,9 +216,21 @@ class TuitionController extends Controller
     {
         $request->validate(['feedback' => 'required|string|max:500']);
 
+        if (! $request->user()->canManageGrade($payment->plan->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
+        if ($payment->status !== 'pending') {
+            return response()->json([
+                'message' => 'Only a submitted (pending) payment can be rejected.',
+            ], 422);
+        }
+
         $payment->update([
-            'status'   => 'unpaid',
-            'feedback' => $request->input('feedback'),
+            'status'      => 'unpaid',
+            'feedback'    => $request->input('feedback'),
+            'paid_at'     => null,
+            'verified_by' => null,
         ]);
 
         return response()->json([
@@ -226,7 +254,7 @@ class TuitionController extends Controller
         ]);
 
         if ($request->filled('enrollment_fee')) {
-            \App\Models\EnrollmentPeriod::first()?->update([
+            \App\Models\EnrollmentPeriod::current()?->update([
                 'enrollment_fee' => $request->input('enrollment_fee'),
             ]);
         }

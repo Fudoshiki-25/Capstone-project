@@ -128,6 +128,10 @@ class RequirementsController extends Controller
             'feedback' => 'required|string|max:500',
         ]);
 
+        if (! $request->user()->canManageGrade($requirement->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
         $requirement->update([
             'status'      => 'needs_resubmit',
             'feedback'    => $request->input('feedback'),

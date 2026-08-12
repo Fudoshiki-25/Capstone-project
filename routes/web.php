@@ -80,6 +80,7 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
 
     // Applications
     Route::patch('/admin/applications/{enrollment}/approve', [EnrollmentController::class, 'approve'])->name('admin.applications.approve');
+    Route::post('/admin/applications/bulk-approve', [EnrollmentController::class, 'bulkApprove'])->name('admin.applications.bulkApprove');
 
     // Sections
     Route::get('/admin/sections', [SectionController::class, 'index'])->name('admin.sections.index');

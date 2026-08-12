@@ -10,6 +10,7 @@ use App\Support\ImageUploadStorer;
 use App\Support\SafeNotify;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -294,12 +295,6 @@ class EnrollmentController extends Controller
             abort(403, 'You do not have permission to finalize this enrollment.');
         }
 
-        if ($enrollment->status !== 'draft') {
-            return response()->json([
-                'message' => 'This enrollment has already been finalized.',
-            ], 422);
-        }
-
         $missing = self::missingDocumentTypes($enrollment);
 
         if (!empty($missing)) {
@@ -309,21 +304,37 @@ class EnrollmentController extends Controller
             ], 422);
         }
 
-        $enrollment->update(['status' => 'pending']);
+        // Re-fetch with a row lock inside a transaction so a double-click
+        // (or a slow-network retry) can't have both requests pass the
+        // "still a draft" check before either commits — the second one
+        // blocks until the first finishes, then correctly sees it's no
+        // longer a draft instead of generating a second tuition plan and
+        // throwing an uncaught unique-constraint exception.
+        return DB::transaction(function () use ($enrollment) {
+            $locked = StudentEnrollment::whereKey($enrollment->id)->lockForUpdate()->first();
 
-        // Generate the tuition installment schedule now that the plan
-        // (monthly/quarterly, chosen in Step 1) and grade level are final.
-        \App\Models\TuitionPlan::generateForEnrollment($enrollment);
+            if ($locked->status !== 'draft') {
+                return response()->json([
+                    'message' => 'This enrollment has already been finalized.',
+                ], 422);
+            }
 
-        SafeNotify::to($enrollment->user, new EnrollmentSubmitted($enrollment));
+            $locked->update(['status' => 'pending']);
 
-        return response()->json([
-            'message'    => 'Enrollment complete! Your child has been added to your Home tab and is awaiting admin review.',
-            'enrollment' => [
-                'id'     => $enrollment->id,
-                'status' => $enrollment->status,
-            ],
-        ]);
+            // Generate the tuition installment schedule now that the plan
+            // (monthly/quarterly, chosen in Step 1) and grade level are final.
+            \App\Models\TuitionPlan::generateForEnrollment($locked);
+
+            SafeNotify::to($locked->user, new EnrollmentSubmitted($locked));
+
+            return response()->json([
+                'message'    => 'Enrollment complete! Your child has been added to your Home tab and is awaiting admin review.',
+                'enrollment' => [
+                    'id'     => $locked->id,
+                    'status' => $locked->status,
+                ],
+            ]);
+        });
     }
 
     /**
@@ -432,6 +443,10 @@ class EnrollmentController extends Controller
             'email'       => 'required|email',
         ], $this->messages());
 
+        if (! $request->user()->canManageGrade($validated['grade_level'])) {
+            abort(403, 'You are not assigned to manage ' . $validated['grade_level'] . '.');
+        }
+
         $parent = \App\Models\Parents::where('email', $validated['email'])->first();
 
         if (! $parent) {
@@ -482,6 +497,10 @@ class EnrollmentController extends Controller
      */
     public function approve(Request $request, StudentEnrollment $enrollment)
     {
+        if (! $request->user()->canManageGrade($enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage ' . $enrollment->grade_level . '.');
+        }
+
         if ($enrollment->status !== 'pending') {
             return response()->json([
                 'message' => 'Only pending applications can be approved.',
@@ -502,6 +521,64 @@ class EnrollmentController extends Controller
         return response()->json([
             'success' => true,
             'message' => trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' has been approved.',
+        ]);
+    }
+
+    /**
+     * POST /admin/applications/bulk-approve
+     * Approves several pending applications in one action. Rather than
+     * failing the whole batch over one bad id, each one is checked
+     * individually and skipped (with a reason) if it's outside the admin's
+     * assigned grade scope or no longer pending — so a stale selection
+     * (someone else already actioned one mid-batch) can't silently corrupt
+     * the rest.
+     */
+    public function bulkApprove(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $approvedNames = [];
+        $skipped = [];
+
+        DB::transaction(function () use ($validated, $request, &$approvedNames, &$skipped) {
+            $enrollments = StudentEnrollment::whereIn('id', $validated['ids'])->lockForUpdate()->get();
+
+            foreach ($enrollments as $enrollment) {
+                $name = trim($enrollment->first_name . ' ' . $enrollment->last_name);
+
+                if (! $request->user()->canManageGrade($enrollment->grade_level)) {
+                    $skipped[] = "{$name} (not in your assigned grades)";
+                    continue;
+                }
+
+                if ($enrollment->status !== 'pending') {
+                    $skipped[] = "{$name} (already reviewed)";
+                    continue;
+                }
+
+                $enrollment->update(['status' => 'approved']);
+                SafeNotify::to($enrollment->user, new EnrollmentApproved($enrollment));
+                $approvedNames[] = $name;
+            }
+        });
+
+        if (!empty($approvedNames)) {
+            \App\Models\ActivityLog::record(
+                $request->user(),
+                'Bulk Approved Applications',
+                count($approvedNames) . ' application(s): ' . implode(', ', $approvedNames),
+                'success'
+            );
+        }
+
+        return response()->json([
+            'success'  => true,
+            'approved' => $approvedNames,
+            'skipped'  => $skipped,
+            'message'  => count($approvedNames) . ' application(s) approved' . (count($skipped) ? ', ' . count($skipped) . ' skipped.' : '.'),
         ]);
     }
 

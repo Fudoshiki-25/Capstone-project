@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Section;
 use App\Models\StudentEnrollment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SectionController extends Controller
 {
@@ -28,54 +29,66 @@ class SectionController extends Controller
 
         $gradeLevel = $request->input('grade_level');
 
-        $students = StudentEnrollment::where('grade_level', $gradeLevel)
-            ->where('status', 'approved')
-            ->whereNull('section_id')
-            ->orderBy('last_name')
-            ->get();
-
-        if ($students->isEmpty()) {
-            return response()->json([
-                'message' => 'No approved, unsectioned students found for ' . $gradeLevel . '.',
-            ], 422);
+        if (! $request->user()->canManageGrade($gradeLevel)) {
+            abort(403, 'You are not assigned to manage ' . $gradeLevel . '.');
         }
 
-        $total       = $students->count();
-        $numSections = max(1, (int) ceil($total / self::MAX_SIZE));
-        $base        = intdiv($total, $numSections);
-        $remainder   = $total % $numSections;
+        // Locks the candidate rows for the duration of the transaction, so a
+        // double-click (or two admins triggering this back-to-back) can't
+        // both read the same unsectioned students before either commits —
+        // the second request blocks until the first finishes, then sees
+        // zero unsectioned students left instead of double-processing them.
+        return DB::transaction(function () use ($gradeLevel) {
+            $students = StudentEnrollment::where('grade_level', $gradeLevel)
+                ->where('status', 'approved')
+                ->whereNull('section_id')
+                ->orderBy('last_name')
+                ->lockForUpdate()
+                ->get();
 
-        // Figure out how many sections already exist for this grade so new
-        // ones are numbered after them instead of restarting at 1.
-        $existingCount = Section::where('grade_level', $gradeLevel)->count();
-
-        $studentIndex = 0;
-        $createdSections = [];
-
-        for ($i = 0; $i < $numSections; $i++) {
-            $sectionSize = $base + ($i < $remainder ? 1 : 0);
-
-            $section = Section::create([
-                'grade_level' => $gradeLevel,
-                'name'        => $gradeLevel . ' - Section ' . ($existingCount + $i + 1),
-            ]);
-            $createdSections[] = $section;
-
-            for ($j = 0; $j < $sectionSize; $j++) {
-                $student = $students[$studentIndex];
-                $student->update([
-                    'section_id' => $section->id,
-                    'status'     => 'enrolled',
-                ]);
-                $studentIndex++;
+            if ($students->isEmpty()) {
+                return response()->json([
+                    'message' => 'No approved, unsectioned students found for ' . $gradeLevel . '.',
+                ], 422);
             }
-        }
 
-        return response()->json([
-            'success'  => true,
-            'message'  => count($createdSections) . ' section(s) created for ' . $gradeLevel . ' (' . $total . ' student(s)).',
-            'sections' => $createdSections,
-        ]);
+            $total       = $students->count();
+            $numSections = max(1, (int) ceil($total / self::MAX_SIZE));
+            $base        = intdiv($total, $numSections);
+            $remainder   = $total % $numSections;
+
+            // Figure out how many sections already exist for this grade so new
+            // ones are numbered after them instead of restarting at 1.
+            $existingCount = Section::where('grade_level', $gradeLevel)->count();
+
+            $studentIndex = 0;
+            $createdSections = [];
+
+            for ($i = 0; $i < $numSections; $i++) {
+                $sectionSize = $base + ($i < $remainder ? 1 : 0);
+
+                $section = Section::create([
+                    'grade_level' => $gradeLevel,
+                    'name'        => $gradeLevel . ' - Section ' . ($existingCount + $i + 1),
+                ]);
+                $createdSections[] = $section;
+
+                for ($j = 0; $j < $sectionSize; $j++) {
+                    $student = $students[$studentIndex];
+                    $student->update([
+                        'section_id' => $section->id,
+                        'status'     => 'enrolled',
+                    ]);
+                    $studentIndex++;
+                }
+            }
+
+            return response()->json([
+                'success'  => true,
+                'message'  => count($createdSections) . ' section(s) created for ' . $gradeLevel . ' (' . $total . ' student(s)).',
+                'sections' => $createdSections,
+            ]);
+        });
     }
 
     /**
@@ -118,6 +131,12 @@ class SectionController extends Controller
 
         $gradeLevel  = $request->input('grade_level');
         $sectionName = trim((string) $request->input('section_name'));
+
+        // Must be allowed to manage both the student's current grade and
+        // the grade they're being moved into.
+        if (! $request->user()->canManageGrade($enrollment->grade_level) || ! $request->user()->canManageGrade($gradeLevel)) {
+            abort(403, 'You are not assigned to manage this transfer.');
+        }
 
         if ($sectionName !== '') {
             $section = Section::firstOrCreate([

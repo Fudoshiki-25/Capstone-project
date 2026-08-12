@@ -21,9 +21,16 @@ class SafeNotify
         try {
             NotificationFacade::send($notifiable, $notification);
         } catch (Throwable $e) {
-            Log::error('Notification failed to send: ' . get_class($notification), [
-                'error' => $e->getMessage(),
-            ]);
+            // Logging itself can fail too (permissions, disk full, etc.) —
+            // swallow that as well, since the whole point of this method is
+            // that nothing here is ever allowed to reach the caller.
+            try {
+                Log::error('Notification failed to send: ' . get_class($notification), [
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (Throwable) {
+                // Nothing more we can do — deliberately silent.
+            }
         }
     }
 }

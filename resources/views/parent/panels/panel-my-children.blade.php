@@ -26,9 +26,10 @@
         $ci2 = strtoupper(substr($child->first_name,0,1)).strtoupper(substr($child->last_name,0,1));
 
         // Pull this child's uploaded requirements, keyed by document_type.
-        $childDocs = \App\Models\EnrollmentRequirement::where('enrollment_id', $child->id)
-          ->get()
-          ->keyBy('document_type');
+        // $child->requirements is already eager-loaded in dashboard.blade.php
+        // (via $enrolledChildren->with('requirements')), so this doesn't
+        // issue a fresh query per child.
+        $childDocs = $child->requirements->keyBy('document_type');
 
         $docLabels = [
           'birth_certificate'   => 'PSA Birth Certificate',

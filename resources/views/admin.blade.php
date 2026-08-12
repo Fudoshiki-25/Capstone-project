@@ -13,16 +13,29 @@ $stuId   = request('stu_id',  '');
 $stuName = request('stu_name','');
 
 $transferStudent = ($modal === 'transfer' && $stuId) ? StudentEnrollment::find($stuId) : null;
-$gradeLevelOptions = ['Kinder','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10'];
+
+// An admin scoped to specific grades (assigned_grades) only ever sees data
+// for those grades — an unrestricted admin (null/empty) sees everything,
+// same "All Grades" convention used throughout. Filters, not just a UI
+// nicety: the write endpoints these pickers feed into (approve, sections
+// generate/transfer, tuition verify/reject) enforce the same scope
+// server-side via User::canManageGrade(), so this keeps what's shown from
+// promising actions the admin isn't actually allowed to take.
+$currentAdmin  = \Illuminate\Support\Facades\Auth::guard('web')->user();
+$scopedGrades  = $currentAdmin->assigned_grades ?: null;
+$allGradeLevelOptions = ['Kinder','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10'];
+$gradeLevelOptions    = $scopedGrades ? array_values(array_intersect($allGradeLevelOptions, $scopedGrades)) : $allGradeLevelOptions;
 
 /* ── Real DB data ── */
 $applications = StudentEnrollment::with('user')
     ->where('status', 'pending')
+    ->when($scopedGrades, fn ($q) => $q->whereIn('grade_level', $scopedGrades))
     ->orderByDesc('created_at')
     ->get();
 
 $students = StudentEnrollment::with(['user', 'tuitionPlan.payments'])
     ->whereIn('status', ['approved', 'enrolled'])
+    ->when($scopedGrades, fn ($q) => $q->whereIn('grade_level', $scopedGrades))
     ->orderBy('last_name')
     ->get();
 
@@ -37,12 +50,14 @@ $pendingCount  = $applications->count();
    (handled server-side when sections are generated).
 ────────────────────────────────────────────────────── */
 $sectionsByGrade = Section::withCount('students')
+    ->when($scopedGrades, fn ($q) => $q->whereIn('grade_level', $scopedGrades))
     ->orderBy('name')
     ->get()
     ->groupBy('grade_level');
 
 $unsectionedByGrade = StudentEnrollment::where('status', 'approved')
     ->whereNull('section_id')
+    ->when($scopedGrades, fn ($q) => $q->whereIn('grade_level', $scopedGrades))
     ->selectRaw('grade_level, COUNT(*) as total')
     ->groupBy('grade_level')
     ->pluck('total', 'grade_level');
@@ -625,6 +640,9 @@ body { margin:0; background:#f1f5f9; }
               <div class="text-muted" style="font-size:13px">Review and manage admission applications</div>
             </div>
             <div class="d-flex gap-2 flex-wrap align-items-center">
+              <button class="btn btn-success btn-sm fw-semibold d-none" id="bulkApproveBtn" onclick="bulkApproveSelected()" disabled>
+                <i class="bi bi-check2-all me-1"></i>Approve Selected (<span id="bulkApproveCount">0</span>)
+              </button>
               <button class="btn-icon-sm" title="Filter"><i class="bi bi-funnel"></i></button>
             </div>
           </div>
@@ -638,6 +656,7 @@ body { margin:0; background:#f1f5f9; }
             <table class="table table-hover align-middle" id="appTable">
               <thead class="table-light">
                 <tr>
+                  <th style="width:36px"><input type="checkbox" class="form-check-input" id="appSelectAll" onchange="toggleSelectAllApplications(this)"></th>
                   @foreach(['#','Name','Grade','Session','Date Applied','Status','Actions'] as $h)
                   <th style="text-transform:uppercase;letter-spacing:.04em;color:#64748b">{{ $h }}</th>
                   @endforeach
@@ -650,6 +669,7 @@ body { margin:0; background:#f1f5f9; }
                   $appInitials = strtoupper(substr($app->first_name,0,1) . substr($app->last_name,0,1));
                 @endphp
                 <tr>
+                  <td><input type="checkbox" class="form-check-input app-row-check" value="{{ $app->id }}" onchange="updateBulkApproveButton()"></td>
                   <td>{{ $i + 1 }}</td>
                   <td><span class="stu-avatar av-blue">{{ $appInitials }}</span> {{ $appFullName }}</td>
                   <td>{{ $app->grade_level }}</td>
@@ -678,7 +698,7 @@ body { margin:0; background:#f1f5f9; }
                 </tr>
                 @empty
                 <tr>
-                  <td colspan="7" class="text-center text-muted py-4">
+                  <td colspan="8" class="text-center text-muted py-4">
                     <i class="bi bi-inbox" style="font-size:32px"></i>
                     <div class="mt-2">No pending applications</div>
                   </td>
@@ -1648,6 +1668,46 @@ function approveApplication(enrollmentId, name) {
       setTimeout(() => location.reload(), 700);
     })
     .catch(() => phlciToast('Could not approve this application. Please try again.', 'error'));
+}
+
+/* ── Bulk approve (Applications tab) ─────────────────────────────────────── */
+function toggleSelectAllApplications(checkbox) {
+  document.querySelectorAll('#appTable .app-row-check').forEach(c => { c.checked = checkbox.checked; });
+  updateBulkApproveButton();
+}
+function updateBulkApproveButton() {
+  const checked = document.querySelectorAll('#appTable .app-row-check:checked').length;
+  const btn = document.getElementById('bulkApproveBtn');
+  const countEl = document.getElementById('bulkApproveCount');
+  if (!btn || !countEl) return;
+  countEl.textContent = checked;
+  btn.classList.toggle('d-none', checked === 0);
+  btn.disabled = checked === 0;
+
+  const total = document.querySelectorAll('#appTable .app-row-check').length;
+  const selectAll = document.getElementById('appSelectAll');
+  if (selectAll) selectAll.checked = total > 0 && checked === total;
+}
+function bulkApproveSelected() {
+  const ids = Array.from(document.querySelectorAll('#appTable .app-row-check:checked')).map(c => parseInt(c.value, 10));
+  if (ids.length === 0) return;
+  if (!confirm(`Approve ${ids.length} selected application(s)?`)) return;
+
+  const btn = document.getElementById('bulkApproveBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Approving…'; }
+
+  apiFetch('/admin/applications/bulk-approve', 'POST', { ids })
+    .then(data => {
+      phlciToast(data.message || `${data.approved.length} application(s) approved.`, 'success');
+      if (data.skipped && data.skipped.length) {
+        console.warn('Skipped:', data.skipped);
+      }
+      setTimeout(() => location.reload(), 900);
+    })
+    .catch(() => {
+      phlciToast('Could not approve the selected applications. Please try again.', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check2-all me-1"></i>Approve Selected (' + ids.length + ')'; }
+    });
 }
 
 function verifyTuitionPayment(paymentId) {

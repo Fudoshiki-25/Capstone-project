@@ -21,6 +21,7 @@
     // yet, so it isn't a finished enrollment and shouldn't show as a card.
     $enrolledChildren = \App\Models\StudentEnrollment::where('user_id', $user->id)
         ->where('status', '!=', 'draft')
+        ->with('requirements')
         ->orderBy('grade_level')
         ->orderBy('last_name')
         ->get();
@@ -48,9 +49,7 @@
     // panel itself never disagree about which children are unlocked.
     $unlockedChildren = $enrolledChildren->filter(function ($child) {
         $required = \App\Http\Controllers\EnrollmentController::requiredDocumentTypes($child->grade_level, $child->student_type);
-        $uploadedTypes = \App\Models\EnrollmentRequirement::where('enrollment_id', $child->id)
-            ->pluck('document_type')
-            ->toArray();
+        $uploadedTypes = $child->requirements->pluck('document_type')->toArray();
         return empty(array_diff($required, $uploadedTypes));
     })->values();
     $hasUnlockedChildProfile = $unlockedChildren->isNotEmpty();
