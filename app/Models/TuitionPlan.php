@@ -61,6 +61,23 @@ class TuitionPlan extends Model
             'down_payment'          => $downPayment,
         ]);
 
+        // The down payment is installment_number 0 — a REAL, admin-verified
+        // tuition_payments row (not just a number echoed back as "paid").
+        // The parent already uploaded proof of payment during Step 1, so it
+        // starts 'pending' (awaiting admin review), exactly like every other
+        // installment, instead of being auto-trusted.
+        if ($downPayment > 0) {
+            $plan->payments()->create([
+                'installment_number' => 0,
+                'amount_due'         => $downPayment,
+                'due_date'           => now(),
+                'status'             => 'pending',
+                'proof_of_payment'   => $enrollment->proof_of_payment,
+                'payment_method'     => $enrollment->payment_method,
+                'submitted_at'       => now(),
+            ]);
+        }
+
         $count   = self::INSTALLMENT_COUNTS[$enrollment->payment_plan] ?? 4;
         $balance = $totalAmount - $downPayment;
 

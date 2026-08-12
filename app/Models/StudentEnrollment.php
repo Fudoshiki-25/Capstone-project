@@ -27,6 +27,7 @@ class StudentEnrollment extends Model
         'father_name',
         'guardian_name',
         'emergency_contact',
+        'emergency_contact_2',
         'preferred_session',
         'payment_method',
         'payment_plan',

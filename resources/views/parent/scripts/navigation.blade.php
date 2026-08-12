@@ -172,8 +172,7 @@ function renderTuitionContent(data, idx) {
   }
 
   var total = data.plan.total_amount;
-  var downPayment = data.plan.down_payment || 0;
-  var paid  = downPayment + data.payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount_due, 0);
+  var paid  = data.payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount_due, 0);
   var balance = total - paid;
   var peso = n => '₱' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -202,20 +201,14 @@ function renderTuitionContent(data, idx) {
     '<th class="px-4 py-3 fw-semibold" style="color:#64748b;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em">Due Date</th>' +
     '<th class="px-4 py-3 fw-semibold" style="color:#64748b;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em">Status</th>' +
     '<th class="px-4 py-3 fw-semibold" style="color:#64748b;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em">Action</th>' +
-    '</tr></thead><tbody>' +
-    '<tr>' +
-      '<td class="px-4 py-3 fw-medium">Upon Enrollment (Down Payment)</td>' +
-      '<td class="px-4 py-3">' + peso(downPayment) + '</td>' +
-      '<td class="px-4 py-3 text-muted">Paid at enrollment</td>' +
-      '<td class="px-4 py-3">' + STATUS_BADGES.paid + '</td>' +
-      '<td class="px-4 py-3"><span class="text-muted" style="font-size:12px">—</span></td>' +
-    '</tr>';
+    '</tr></thead><tbody>';
 
   data.payments.forEach(p => {
+    var label = p.installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' + p.installment_number;
     html += '<tr>' +
-      '<td class="px-4 py-3 fw-medium">Installment ' + p.installment_number + '</td>' +
+      '<td class="px-4 py-3 fw-medium">' + label + '</td>' +
       '<td class="px-4 py-3">' + peso(p.amount_due) + '</td>' +
-      '<td class="px-4 py-3 text-muted">' + p.due_date + '</td>' +
+      '<td class="px-4 py-3 text-muted">' + (p.installment_number === 0 ? 'Due at enrollment' : p.due_date) + '</td>' +
       '<td class="px-4 py-3">' + (STATUS_BADGES[p.status] || p.status) +
         (p.status === 'unpaid' && p.feedback ? '<div class="mt-1" style="font-size:11px;color:#b45309"><i class="bi bi-exclamation-circle-fill me-1"></i>' + p.feedback + '</div>' : '') +
       '</td>' +
@@ -235,6 +228,8 @@ function renderTuitionContent(data, idx) {
 }
 
 function tuitionActionCell(p) {
+  var label = p.installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' + p.installment_number;
+
   if (p.status === 'paid') {
     return p.proof_of_payment
       ? '<a href="' + p.proof_of_payment + '" target="_blank" class="btn btn-sm fw-semibold px-3" style="background:#f1f5f9;color:#1a2a5e;font-size:12px;border:1px solid #e2e8f0"><i class="bi bi-eye me-1"></i>View Receipt</a>'
@@ -243,7 +238,7 @@ function tuitionActionCell(p) {
   if (p.status === 'pending') {
     return '<span class="text-muted" style="font-size:12px">Awaiting verification</span>';
   }
-  return '<button type="button" class="btn btn-sm fw-semibold px-3" style="background:#1a2a5e;color:#fff;font-size:12px" onclick="openSubmitPaymentModal(' + p.id + ', \'Installment ' + p.installment_number + ' — ' + peso(p.amount_due) + '\')">' +
+  return '<button type="button" class="btn btn-sm fw-semibold px-3" style="background:#1a2a5e;color:#fff;font-size:12px" onclick="openSubmitPaymentModal(' + p.id + ', \'' + label + ' — ' + peso(p.amount_due) + '\')">' +
     '<i class="bi bi-upload me-1"></i>' + (p.feedback ? 'Resubmit Proof' : 'Upload Proof') +
     '</button>';
 }

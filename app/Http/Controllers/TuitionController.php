@@ -44,11 +44,10 @@ class TuitionController extends Controller
                 'total_amount' => (float) $plan->total_amount,
                 'down_payment' => (float) $plan->down_payment,
             ],
-            'downPayment' => [
-                'amount'         => (float) $plan->down_payment,
-                'payment_method' => self::methodLabel($enrollment->payment_method),
-                'submitted_at'   => $enrollment->created_at->format('M j, Y g:i A'),
-            ],
+            // installment_number 0 is the down payment — a real, admin-
+            // verified row like every other installment (see
+            // TuitionPlan::generateForEnrollment). No longer a separate
+            // synthesized "always paid" block.
             'payments' => $plan->payments->sortBy('installment_number')->values()->map(fn ($p) => [
                 'id'                  => $p->id,
                 'installment_number'  => $p->installment_number,
@@ -89,17 +88,8 @@ class TuitionController extends Controller
                 continue;
             }
 
-            // Down payment — captured at enrollment, treated as immediately paid.
-            $rows->push([
-                'child'          => $childName,
-                'label'          => 'Upon Enrollment (Down Payment)',
-                'amount'         => (float) $plan->down_payment,
-                'payment_method' => self::methodLabel($enrollment->payment_method),
-                'submitted_at'   => $enrollment->created_at->format('M j, Y g:i A'),
-                'verified_at'    => $enrollment->created_at->format('M j, Y g:i A'),
-                'status'         => 'paid',
-            ]);
-
+            // installment_number 0 is the down payment — a real row, same
+            // as every other installment (see TuitionPlan::generateForEnrollment).
             foreach ($plan->payments as $p) {
                 if (! $p->submitted_at) {
                     continue; // never submitted yet — nothing to show in history
@@ -107,7 +97,7 @@ class TuitionController extends Controller
 
                 $rows->push([
                     'child'          => $childName,
-                    'label'          => 'Installment ' . $p->installment_number,
+                    'label'          => $p->installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' . $p->installment_number,
                     'amount'         => (float) $p->amount_due,
                     'payment_method' => self::methodLabel($p->payment_method),
                     'submitted_at'   => $p->submitted_at->format('M j, Y g:i A'),

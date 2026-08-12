@@ -66,6 +66,7 @@ class EnrollmentController extends Controller
             'father_name'        => 'required|string|max:150',
             'guardian_name'      => 'required|string|max:150',
             'emergency_contact'  => 'required|string|max:20',
+            'emergency_contact_2' => 'nullable|string|max:20',
             'classSession'       => 'required|in:AM,PM',
             'payMethod'          => 'required|in:GCash,Maya,Bank Transfer,Cash',
             'paymentPlan'        => 'required|in:monthly,quarterly',

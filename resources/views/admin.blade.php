@@ -1217,18 +1217,19 @@ body { margin:0; background:#f1f5f9; }
               <span class="text-muted" style="font-size:12px;margin-left:auto">{{ ucfirst($p->tuitionPlan->plan_type) }} Plan &bull; ₱{{ number_format($p->tuitionPlan->total_amount, 2) }} total</span>
             </div>
             <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
-                <div style="font-size:13px;font-weight:600;color:#1e293b">Upon Enrollment (Down Payment) — ₱{{ number_format($p->tuitionPlan->down_payment, 2) }}</div>
-                <span class="badge-approved">Paid</span>
-              </div>
               @foreach($p->tuitionPlan->payments->sortBy('installment_number') as $pay)
+              @php
+                $payLabel = $pay->installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' . $pay->installment_number;
+              @endphp
               <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" id="tuition-pay-{{ $pay->id }}" style="background:#f8fafc;border:1px solid #e2e8f0">
                 <div style="min-width:0;flex:1">
                   @php
                     $payMethodLabels = ['gcash'=>'GCash','maya'=>'Maya','bank_transfer'=>'Bank Transfer','cash'=>'Cash'];
                   @endphp
-                  <div style="font-size:13px;font-weight:600;color:#1e293b">Installment {{ $pay->installment_number }} — ₱{{ number_format($pay->amount_due, 2) }}</div>
+                  <div style="font-size:13px;font-weight:600;color:#1e293b">{{ $payLabel }} — ₱{{ number_format($pay->amount_due, 2) }}</div>
+                  @if($pay->installment_number > 0)
                   <div class="text-muted mt-1" style="font-size:11.5px">Due {{ $pay->due_date->format('M j, Y') }}</div>
+                  @endif
                   @if($pay->payment_method)
                   <div class="text-muted mt-1" style="font-size:11.5px">
                     <i class="bi bi-credit-card me-1"></i>{{ $payMethodLabels[$pay->payment_method] ?? $pay->payment_method }}
@@ -1259,7 +1260,7 @@ body { margin:0; background:#f1f5f9; }
                   <button type="button" class="btn btn-success btn-sm" style="font-size:12px" onclick="verifyTuitionPayment({{ $pay->id }})">
                     <i class="bi bi-check-lg me-1"></i>Verify
                   </button>
-                  <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $pay->id }}, 'Installment {{ $pay->installment_number }}', true)">
+                  <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $pay->id }}, '{{ $payLabel }}', true)">
                     <i class="bi bi-arrow-repeat me-1"></i>Reject
                   </button>
                   @endif
