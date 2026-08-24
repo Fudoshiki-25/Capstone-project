@@ -875,7 +875,8 @@ body { margin:0; background:#f1f5f9; }
               @if($gradeSections->count() > 0)
                 @foreach($gradeSections as $sec)
                 @php $pct = round($sec->students_count / \App\Http\Controllers\SectionController::MAX_SIZE * 100); @endphp
-                <div class="section-row">
+               <div class="section-row" style="cursor:pointer" title="Click to view Master List"
+                     onclick="openMasterList({{ $sec->id }}, '{{ addslashes($gradeLabel) }}', '{{ addslashes($sec->name) }}')">
                   <div class="section-top">
                     <div class="section-icon" style="background:{{ $gcBg }};color:{{ $gcColor }}">
                       <i class="bi bi-book-fill"></i>
@@ -2042,57 +2043,44 @@ function initAdminCharts() {
   });
 }
 
-/* ── Master List ── */
-// Sample student roster keyed by gradeId+sectionName
-const _masterListData = {
-  g7_Section_A: [
-    {no:1,lrn:'202600700001',name:'Aguilar, Maria C.',sex:'F',dob:'Mar 12, 2013',age:13,address:'Brgy. Centro, Minalabac'},
-    {no:2,lrn:'202600700002',name:'Bautista, Juan R.',sex:'M',dob:'Jul 5, 2013',age:12,address:'Brgy. Lupi, Naga City'},
-    {no:3,lrn:'202600700003',name:'Cruz, Ana P.',sex:'F',dob:'Jan 20, 2013',age:13,address:'Brgy. Tinalmud, Camaligan'},
-    {no:4,lrn:'202600700004',name:'De Leon, Carlos M.',sex:'M',dob:'Sep 8, 2013',age:12,address:'Brgy. Sabang, Minalabac'},
-    {no:5,lrn:'202600700005',name:'Espiritu, Rosa T.',sex:'F',dob:'Apr 15, 2013',age:13,address:'Brgy. Sta. Cruz, Naga'},
-  ],
-  g7_Section_B: [
-    {no:1,lrn:'202600700031',name:'Flores, Miguel A.',sex:'M',dob:'Feb 11, 2013',age:13,address:'Brgy. Sto. Niño, Naga'},
-    {no:2,lrn:'202600700032',name:'Garcia, Liza M.',sex:'F',dob:'Jun 22, 2013',age:12,address:'Brgy. Peñafrancia, Naga'},
-    {no:3,lrn:'202600700033',name:'Hernandez, Rey B.',sex:'M',dob:'Oct 3, 2013',age:12,address:'Brgy. Pacol, Naga'},
-  ],
-};
+/* ── Master List (real data) ── */
+function openMasterList(sectionId, gradeLabel, sectionName) {
+  fetch(`/admin/sections/${sectionId}/master-list`)
+    .then(res => res.json())
+    .then(data => renderMasterList(data.students, gradeLabel, sectionName))
+    .catch(() => showToast('Could not load master list. Please try again.'));
+}
 
-function openMasterList(gradeLabel, sectionName, studentCount, gradeId) {
-  const key = gradeId + '_' + sectionName.replace(' ','_');
-  const students = _masterListData[key] || generateSampleStudents(studentCount, gradeLabel, sectionName);
-
+function renderMasterList(students, gradeLabel, sectionName) {
   const gradeColorMap = {
-    kinder:{bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
-    g1: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
-    g2: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
-    g3: {bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
-    g4: {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
-    g5: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
-    g6: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
-    g7: {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
-    g8: {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
-    g9: {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
-    g10:{bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
+    'Kinder':   {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    'Grade 1':  {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    'Grade 2':  {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    'Grade 3':  {bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
+    'Grade 4':  {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    'Grade 5':  {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    'Grade 6':  {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    'Grade 7':  {bg:'#ccfbf1',color:'#0f766e',gradient:'#0d9488,#065f46'},
+    'Grade 8':  {bg:'#fef3c7',color:'#b45309',gradient:'#d97706,#92400e'},
+    'Grade 9':  {bg:'#fce7f3',color:'#be185d',gradient:'#db2777,#9d174d'},
+    'Grade 10': {bg:'#eff6ff',color:'#1e40af',gradient:'#1e3a8a,#1e40af'},
   };
-  const gc = gradeColorMap[gradeId] || {bg:'#f1f5f9',color:'#475569',gradient:'#475569,#1e293b'};
+  const gc = gradeColorMap[gradeLabel] || {bg:'#f1f5f9',color:'#475569',gradient:'#475569,#1e293b'};
 
   const rows = students.map(s =>
     `<tr>
       <td style="text-align:center;color:#64748b">${s.no}</td>
-      <td style="font-family:monospace;font-size:11.5px;color:#64748b">${s.lrn}</td>
+      <td style="font-family:monospace;font-size:11.5px;color:#64748b">${s.lrn ?? '—'}</td>
       <td style="font-weight:600;color:#1e293b">${s.name}</td>
       <td style="text-align:center">${s.sex}</td>
-      <td style="font-size:12px;color:#475569">${s.dob}</td>
-      <td style="text-align:center">${s.age}</td>
-      <td style="font-size:12px;color:#475569">${s.address}</td>
+      <td style="font-size:12px;color:#475569">${s.dob ?? '—'}</td>
+      <td style="text-align:center">${s.age ?? '—'}</td>
+      <td style="font-size:12px;color:#475569">${s.address ?? '—'}</td>
     </tr>`
   ).join('');
 
   document.getElementById('masterListContent').innerHTML = `
     <div id="masterListPrintArea">
-      <!-- Print Header -->
       <div class="print-only" style="text-align:center;margin-bottom:18px">
         <div style="font-size:13px;font-weight:700;text-transform:uppercase">Premiere Heights Learning Center, Inc.</div>
         <div style="font-size:11px;color:#475569">Carmona, Cavite</div>
@@ -2100,7 +2088,6 @@ function openMasterList(gradeLabel, sectionName, studentCount, gradeId) {
         <div style="font-size:12px">${gradeLabel} – ${sectionName} &nbsp;|&nbsp; SY 2025–2026</div>
         <div style="border-bottom:2px solid #1e293b;margin:10px 0"></div>
       </div>
-      <!-- Screen Header -->
       <div class="no-print d-flex align-items-center gap-3 mb-3 p-3 rounded-3" style="background:linear-gradient(135deg,${gc.gradient});color:#fff">
         <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px"><i class="bi bi-list-columns-reverse"></i></div>
         <div>
@@ -2121,17 +2108,15 @@ function openMasterList(gradeLabel, sectionName, studentCount, gradeId) {
               <th style="padding:9px 10px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em">Address</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows || '<tr><td colspan="7" class="text-center text-muted py-3">No students in this section yet.</td></tr>'}</tbody>
         </table>
       </div>
-      <!-- Print footer -->
       <div class="print-only" style="margin-top:32px;display:flex;justify-content:space-between;font-size:11px">
         <div>Prepared by: _______________________<br>Class Adviser<br>Date: _______________</div>
         <div style="text-align:right">Noted by: _______________________<br>School Principal<br>Date: _______________</div>
       </div>
     </div>`;
 
-  // inject print styles
   if (!document.getElementById('masterPrintStyle')) {
     const s = document.createElement('style');
     s.id = 'masterPrintStyle';

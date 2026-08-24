@@ -509,6 +509,18 @@ class EnrollmentController extends Controller
         }
 
         $enrollment->update(['status' => 'approved']);
+        $downPayment = $enrollment->tuitionPlan?->payments()
+                ->where('installment_number', 0)
+                ->where('status', 'pending')
+                ->first();
+
+            if ($downPayment) {
+                $downPayment->update([
+                    'status'      => 'paid',
+                    'paid_at'     => now(),
+                    'verified_by' => $request->user()->id,
+                ]);
+            }
 
         \App\Models\ActivityLog::record(
             $request->user(),
@@ -561,8 +573,21 @@ class EnrollmentController extends Controller
                 }
 
                 $enrollment->update(['status' => 'approved']);
+                $downPayment = $enrollment->tuitionPlan?->payments()
+                    ->where('installment_number', 0)
+                    ->where('status', 'pending')
+                    ->first();
+
+                if ($downPayment) {
+                    $downPayment->update([
+                        'status'      => 'paid',
+                        'paid_at'     => now(),
+                        'verified_by' => $request->user()->id,
+                    ]);
+                }
+
                 SafeNotify::to($enrollment->user, new EnrollmentApproved($enrollment));
-                $approvedNames[] = $name;
+                    $approvedNames[] = $name;
             }
         });
 

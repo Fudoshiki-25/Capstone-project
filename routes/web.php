@@ -86,6 +86,8 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
     Route::get('/admin/sections', [SectionController::class, 'index'])->name('admin.sections.index');
     Route::post('/admin/sections/generate', [SectionController::class, 'generate'])->name('admin.sections.generate');
     Route::patch('/admin/students/{enrollment}/transfer', [SectionController::class, 'transfer'])->name('admin.students.transfer');
+    Route::get('/admin/sections/{section}/master-list', [SectionController::class, 'masterList'])
+    ->name('admin.sections.masterList');
 
     // Students
     Route::get('/admin/students/export', [EnrollmentController::class, 'export'])->name('admin.students.export');

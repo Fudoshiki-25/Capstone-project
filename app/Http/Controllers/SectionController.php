@@ -169,4 +169,26 @@ class SectionController extends Controller
             'message' => trim($enrollment->first_name . ' ' . $enrollment->last_name) . ' transferred successfully.',
         ]);
     }
+    public function masterList(Section $section)
+{
+    $students = \App\Models\StudentEnrollment::where('section_id', $section->id)
+        ->orderBy('last_name')->orderBy('first_name')
+        ->get()
+        ->values()
+        ->map(fn($s, $i) => [
+            'no'      => $i + 1,
+            'lrn'     => $s->lrn,
+            'name'    => $s->last_name . ', ' . $s->first_name . ($s->middle_name && $s->middle_name !== 'N/A' ? ' ' . substr($s->middle_name, 0, 1) . '.' : ''),
+            'sex'     => $s->sex ?? '—', // ⚠ see note below
+            'dob'     => optional($s->birthday)->format('M j, Y'),
+            'age'     => optional($s->birthday)->age,
+            'address' => $s->address,
+        ]);
+
+    return response()->json([
+        'grade'    => $section->grade_level ?? null,
+        'section'  => $section->name,
+        'students' => $students,
+    ]);
+}
 }
