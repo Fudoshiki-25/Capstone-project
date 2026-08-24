@@ -311,10 +311,10 @@ class Authcontroller extends Controller
         $parent->save();
 
         return response()->json([
-            'success' => true,
-            'message' => 'Profile picture updated successfully.',
-            'url'     => asset('storage/' . $path),
-        ]);
+    'success' => true,
+    'message' => 'Profile picture updated successfully.',
+    'url'     => asset('storage/' . $path),
+]);
     }
 
     public function removeProfilePic(Request $request)
