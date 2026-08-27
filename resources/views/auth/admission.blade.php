@@ -98,6 +98,22 @@
       </div>
     </div>
 
+    <div class="form-check mb-3">
+  <input class="form-check-input @error('terms_accepted') is-invalid @enderror"
+         type="checkbox"
+         id="terms_accepted"
+         name="terms_accepted"
+         value="1"
+         {{ old('terms_accepted') ? 'checked' : '' }}>
+  <label class="form-check-label" for="terms_accepted" style="font-size:13.5px">
+    I have read and agree to the
+    <a href="{{ asset('docs/terms_of_use.pdf') }}" target="_blank">Terms of Use</a>.
+  </label>
+  @error('terms_accepted')
+    <div class="invalid-feedback">{{ $message }}</div>
+  @enderror
+</div>
+
     <div class="g-recaptcha mb-3" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
     <button type="submit" class="btn btn-navy w-100 py-2 fw-semibold">Create Account</button>
 

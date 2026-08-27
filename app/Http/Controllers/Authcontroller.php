@@ -183,6 +183,7 @@ class Authcontroller extends Controller
             'email'               => 'required|string|email|max:255|unique:parents,email',
             'password'            => ['required', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
             'g-recaptcha-response' => ['required', new Recaptcha],
+             'terms_accepted' => ['required', 'accepted'], 
         ]);
 
         $parent = Parents::create([
@@ -191,6 +192,9 @@ class Authcontroller extends Controller
             'email'      => $request->email,
             'password'   => Hash::make($request->password),
             'role'       => 'parent',
+            'terms_accepted'    => true,
+            'terms_accepted_at' => now(),
+            'terms_version'     => config('app.terms_version', '1.0'),
             'updated_at' => now(),
             'created_at' => now(),
         ]);

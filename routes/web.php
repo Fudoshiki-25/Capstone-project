@@ -13,6 +13,8 @@ use App\Http\Controllers\PushSubscriptionController;
 // ── PUBLIC ROUTES ─────────────────────────────────────────────────────────────
 Route::get('/',               [Authcontroller::class, 'landingpage'])->name('landingpage');
 Route::get('/logout',         [Authcontroller::class, 'logout'])->name('logout');
+Route::get('/terms',   [App\Http\Controllers\LegalController::class, 'terms'])->name('terms.show');
+Route::get('/privacy', [App\Http\Controllers\LegalController::class, 'privacy'])->name('privacy.show');
 
 // Guest-only: an already-logged-in user is redirected to their dashboard
 // instead of seeing these — they must log out first to reach them again.
@@ -125,4 +127,6 @@ Route::middleware(['auth:web', 'role:superadmin'])->prefix('superadmin')->name('
 
     // Tuition rate configuration
     Route::put('/tuition/grade-fees', [TuitionController::class, 'updateGradeFees'])->name('tuition.gradeFees.update');
+    //terns of use
+   
 });
