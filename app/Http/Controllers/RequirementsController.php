@@ -123,26 +123,30 @@ class RequirementsController extends Controller
      * parent is prompted to re-upload it, with a note on what was wrong.
      */
     public function flagResubmit(Request $request, EnrollmentRequirement $requirement)
-    {
-        $request->validate([
-            'feedback' => 'required|string|max:500',
-        ]);
+{
+    $request->validate([
+        'feedback' => 'required|string|max:500',
+    ]);
 
-        if (! $request->user()->canManageGrade($requirement->enrollment->grade_level)) {
-            abort(403, 'You are not assigned to manage this student\'s grade level.');
-        }
-
-        $requirement->update([
-            'status'      => 'needs_resubmit',
-            'feedback'    => $request->input('feedback'),
-            'reviewed_at' => now(),
-        ]);
-
-        SafeNotify::to($requirement->enrollment->user, new DocumentNeedsResubmit($requirement));
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Parent has been notified to resubmit this document.',
-        ]);
+    if (! $request->user()->canManageGrade($requirement->enrollment->grade_level)) {
+        abort(403, 'You are not assigned to manage this student\'s grade level.');
     }
+
+    if (in_array($requirement->enrollment->status, ['approved', 'enrolled'])) {
+        abort(403, 'This application has already been validated.');
+    }
+
+    $requirement->update([
+        'status'      => 'needs_resubmit',
+        'feedback'    => $request->input('feedback'),
+        'reviewed_at' => now(),
+    ]);
+
+    SafeNotify::to($requirement->enrollment->user, new DocumentNeedsResubmit($requirement));
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Parent has been notified to resubmit this document.',
+    ]);
+}
 }

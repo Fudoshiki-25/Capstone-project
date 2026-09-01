@@ -1219,7 +1219,7 @@ body { margin:0; background:#f1f5f9; }
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-shrink-0" id="req-doc-actions-{{ $doc->id }}">
                   <a href="{{ asset('storage/' . $doc->path) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="font-size:12px"><i class="bi bi-eye me-1"></i>View</a>
-                  @if($doc->status !== 'needs_resubmit')
+                  @if($doc->status !== 'needs_resubmit' && !in_array($p->status, ['approved', 'enrolled']))
                   <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $doc->id }}, '{{ addslashes($doc->document_label) }}')">
                     <i class="bi bi-arrow-repeat me-1"></i>Flag for Resubmit
                   </button>
