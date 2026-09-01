@@ -9,16 +9,33 @@
       @if($unlockedChildren->isNotEmpty())
       {{-- Child selector tabs if multiple --}}
       @if($unlockedChildren->count() > 1)
-      <div class="d-flex flex-wrap gap-2 mb-4" style="max-width:780px;margin:0 auto">
+      <div class="d-flex flex-wrap gap-4 mb-4 border-bottom child-profile-tabs" style="max-width:780px;margin:0 auto">
         @foreach($unlockedChildren as $i => $child)
         <button id="child-profile-tab-{{ $child->id }}" data-child-id="{{ $child->id }}"
           onclick="switchChildProfileTab({{ $child->id }})"
-          class="btn btn-sm fw-semibold px-3 py-2 child-profile-tab"
-          style="font-size:13px;border-radius:20px;{{ $i===0 ? 'background:#1a2a5e;color:#fff' : 'background:#f1f5f9;color:#374151' }}">
+          class="btn btn-sm fw-semibold px-1 pb-2 child-profile-tab {{ $i===0 ? 'active' : '' }}">
           {{ $child->first_name }} {{ $child->last_name }}
         </button>
         @endforeach
       </div>
+
+      <style>
+        .child-profile-tabs { gap: 1.5rem; }
+        .child-profile-tab {
+          border: none;
+          border-radius: 0;
+          background: transparent;
+          color: #64748b;
+          border-bottom: 3px solid transparent;
+          font-size: 14px;
+          transition: color .15s ease, border-color .15s ease;
+        }
+        .child-profile-tab:hover { color: #1a2a5e; }
+        .child-profile-tab.active {
+          color: #1a2a5e;
+          border-bottom-color: #1a2a5e;
+        }
+      </style>
       @endif
 
       @foreach($unlockedChildren as $i => $child)

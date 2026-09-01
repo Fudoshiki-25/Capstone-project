@@ -767,15 +767,37 @@ body { margin:0; background:#f1f5f9; }
                   <td>
                     @php
                       $payments = $stu->tuitionPlan?->payments ?? collect();
-                      $hasUnpaid  = $payments->contains('status', 'unpaid');
-                      $hasPending = $payments->contains('status', 'pending');
+                      $downPayment = $payments->firstWhere('installment_number', 0);
+
+                      if ($stu->status === 'enrolled') {
+                        // Already enrolled — down payment is settled by definition.
+                        // What matters now is the next installment admin needs to
+                        // watch, not the whole 10-month/4-quarter schedule (every
+                        // future installment starts 'unpaid' by design, so checking
+                        // the whole plan would always show "Unpaid").
+                        $watchPayment = $payments->where('installment_number', '>', 0)
+                          ->whereIn('status', ['unpaid', 'pending', 'needs_resubmit'])
+                          ->sortBy('due_date')
+                          ->first();
+                      } else {
+                        // Still just approved — the only thing to show is whether
+                        // the down payment itself has been verified.
+                        $watchPayment = $downPayment;
+                      }
                     @endphp
                     @if($payments->isEmpty())
                       <span class="text-muted" style="font-size:11px">—</span>
-                    @elseif($hasPending)
+                    @elseif(!$watchPayment)
+                      {{-- enrolled student with every installment already paid --}}
+                      <span class="badge rounded-pill px-2" style="background:#dcfce7;color:#166534;font-size:11px">Paid</span>
+                    @elseif($watchPayment->status === 'pending')
                       <span class="badge rounded-pill px-2" style="background:#e0f2fe;color:#0369a1;font-size:11px">Pending</span>
-                    @elseif($hasUnpaid)
-                      <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">Unpaid</span>
+                    @elseif($watchPayment->status === 'needs_resubmit')
+                      <span class="badge rounded-pill px-2" style="background:#fee2e2;color:#b91c1c;font-size:11px">Needs Resubmit</span>
+                    @elseif($watchPayment->status === 'unpaid')
+                      <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">
+                        {{ $watchPayment->due_date->isPast() ? 'Overdue' : 'Unpaid' }}
+                      </span>
                     @else
                       <span class="badge rounded-pill px-2" style="background:#dcfce7;color:#166534;font-size:11px">Paid</span>
                     @endif

@@ -11,13 +11,13 @@ class SendTuitionReminders extends Command
 {
     protected $signature = 'tuition:send-reminders';
 
-    protected $description = 'Emails/pushes a reminder for unpaid tuition installments due within 5 days, or overdue';
+    protected $description = 'Emails/pushes a reminder for unpaid tuition installments due within 3 days, or overdue';
 
     /**
      * Days-before-due-date a reminder starts going out. Anything already
      * past its due date is always included too (the overdue case).
      */
-    private const REMIND_DAYS_BEFORE = 5;
+    private const REMIND_DAYS_BEFORE = 3;
 
     public function handle(): int
     {

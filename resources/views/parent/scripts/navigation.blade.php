@@ -117,15 +117,15 @@ function deleteEnrollment(childId, childName) {
 // array index so this works correctly no matter how many children exist
 // or what order they're rendered in.
 function switchChildProfileTab(childId) {
-  document.querySelectorAll('.child-profile-pane').forEach(p => p.classList.add('d-none'));
-  var pane = document.querySelector('.child-profile-pane[data-child-id="' + childId + '"]');
-  if (pane) pane.classList.remove('d-none');
-
-  document.querySelectorAll('[id^="child-profile-tab-"]').forEach(btn => {
-    btn.style.background = '#f1f5f9'; btn.style.color = '#374151';
+  // Toggle active class on tab buttons
+  document.querySelectorAll('.child-profile-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.childId == childId);
   });
-  var tab = document.querySelector('.child-profile-tab[data-child-id="' + childId + '"]');
-  if (tab) { tab.style.background = '#1a2a5e'; tab.style.color = '#fff'; }
+
+  // Show the matching pane, hide the rest
+  document.querySelectorAll('.child-profile-pane').forEach(pane => {
+    pane.classList.toggle('d-none', pane.dataset.childId != childId);
+  });
 }
 
 // ── Tuition child switch ───────────────────────────────────────────────────
