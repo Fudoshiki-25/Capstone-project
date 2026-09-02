@@ -521,6 +521,19 @@ body { margin:0; background:#f1f5f9; }
         </div>
       </div>
       <div class="topbar-right">
+        <div class="position-relative">
+          <div class="topbar-icon" style="position:relative" onclick="toggleNotifDropdown(event)" id="notifBellBtn">
+            <i class="bi bi-bell-fill"></i>
+            <span id="notifBadge" class="d-none" style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;border-radius:999px;font-size:10px;line-height:1;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:2px;font-weight:700"></span>
+          </div>
+          <div id="notifDropdown" class="d-none" style="position:absolute;right:0;top:44px;width:340px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.12);z-index:200">
+            <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:between;gap:8px">
+              <span style="font-size:13px;font-weight:700;color:#1e293b">Notifications</span>
+              <button type="button" class="btn btn-link btn-sm ms-auto p-0" style="font-size:11.5px;text-decoration:none" onclick="markAllNotifsRead(event)">Mark all read</button>
+            </div>
+            <div id="notifList"></div>
+          </div>
+        </div>
         <div class="brand-logo" style="background:var(--navy);width:34px;height:34px;font-size:13px;overflow:hidden">
           @if($user->profile_photo)
             <img src="{{ asset('storage/' . $user->profile_photo) }}" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%">
@@ -686,7 +699,7 @@ body { margin:0; background:#f1f5f9; }
                         <i class="bi bi-three-dots-vertical"></i>
                       </button>
                       <div class="action-dropdown shadow-sm">
-                        <a class="action-item" href="?modal=profile&app_id={{ $app->id }}">
+                        <a class="action-item" href="?modal=profile&app_id={{ $app->id }}&from=applications">
                           <i class="bi bi-eye text-navy"></i> View Profile
                         </a>
                         <button type="button" class="action-item text-success" onclick="closeMenuThen(()=>approveApplication({{ $app->id }}, '{{ addslashes($appFullName) }}'))">
@@ -754,9 +767,27 @@ body { margin:0; background:#f1f5f9; }
                   $avatarColors = ['av-blue','av-teal','av-orange','av-green','av-purple'];
                   $avatarColor  = $avatarColors[$i % count($avatarColors)];
                 @endphp
+                @php
+                  $payments = $stu->tuitionPlan?->payments ?? collect();
+                  $downPayment = $payments->firstWhere('installment_number', 0);
+
+                  if ($stu->status === 'enrolled') {
+                    $watchPayment = $payments->where('installment_number', '>', 0)
+                      ->whereIn('status', ['unpaid', 'pending', 'needs_resubmit'])
+                      ->sortBy('due_date')
+                      ->first();
+                  } else {
+                    $watchPayment = $downPayment;
+                  }
+                @endphp
                 <tr>
                   <td>{{ $i + 1 }}</td>
-                  <td><span class="stu-avatar {{ $avatarColor }}">{{ $stuInitials }}</span> {{ $stuFullName }}</td>
+                  <td>
+                    <span class="stu-avatar {{ $avatarColor }}">{{ $stuInitials }}</span> {{ $stuFullName }}
+                    @if($watchPayment && $watchPayment->status === 'pending')
+                      <span title="Payment proof awaiting review" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-left:5px;vertical-align:middle"></span>
+                    @endif
+                  </td>
                   <td>{{ $stu->grade_level }}</td>
                   <td>
                     <span class="badge rounded-pill px-2" style="background:{{ $stu->preferred_session === 'AM' ? '#dbeafe' : '#fce7f3' }};color:{{ $stu->preferred_session === 'AM' ? '#1e40af' : '#be185d' }};font-size:11px">
@@ -765,26 +796,8 @@ body { margin:0; background:#f1f5f9; }
                   </td>
                   <td><span class="badge-{{ $stu->status === 'enrolled' ? 'enrolled' : 'approved' }}">{{ ucfirst($stu->status) }}</span></td>
                   <td>
-                    @php
-                      $payments = $stu->tuitionPlan?->payments ?? collect();
-                      $downPayment = $payments->firstWhere('installment_number', 0);
-
-                      if ($stu->status === 'enrolled') {
-                        // Already enrolled — down payment is settled by definition.
-                        // What matters now is the next installment admin needs to
-                        // watch, not the whole 10-month/4-quarter schedule (every
-                        // future installment starts 'unpaid' by design, so checking
-                        // the whole plan would always show "Unpaid").
-                        $watchPayment = $payments->where('installment_number', '>', 0)
-                          ->whereIn('status', ['unpaid', 'pending', 'needs_resubmit'])
-                          ->sortBy('due_date')
-                          ->first();
-                      } else {
-                        // Still just approved — the only thing to show is whether
-                        // the down payment itself has been verified.
-                        $watchPayment = $downPayment;
-                      }
-                    @endphp
+                    {{-- $watchPayment already computed above the <tr> so the
+                         Name column's red dot can use it too. --}}
                     @if($payments->isEmpty())
                       <span class="text-muted" style="font-size:11px">—</span>
                     @elseif(!$watchPayment)
@@ -808,7 +821,7 @@ body { margin:0; background:#f1f5f9; }
                         <i class="bi bi-three-dots-vertical"></i>
                       </button>
                       <div class="action-dropdown shadow-sm">
-                        <a class="action-item" href="?modal=profile&app_id={{ $stu->id }}">
+                        <a class="action-item" href="?modal=profile&app_id={{ $stu->id }}&from=students">
                           <i class="bi bi-eye text-navy"></i> View Profile
                         </a>
                         <a class="action-item" href="?modal=transfer&stu_id={{ $stu->id }}&stu_name={{ urlencode(trim($stu->first_name.' '.$stu->last_name)) }}">
@@ -1037,6 +1050,81 @@ body { margin:0; background:#f1f5f9; }
   </div>
 </div>
 
+<!-- ═══ MODAL: NOTIFICATION DETAIL (payment proof submitted) ═══ -->
+<div class="modal fade" id="notifDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-cash-coin me-2" style="color:#0d9488"></i>Payment Proof Submitted</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2" style="font-size:13px">
+          <div class="col-6">
+            <div class="text-muted" style="font-size:11px">Student</div>
+            <div class="fw-semibold" id="notifModalStudent">—</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:11px">Parent</div>
+            <div class="fw-semibold" id="notifModalParent">—</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:11px">Installment</div>
+            <div class="fw-semibold" id="notifModalLabel">—</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:11px">Amount</div>
+            <div class="fw-semibold" id="notifModalAmount">—</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted" style="font-size:11px">Method</div>
+            <div class="fw-semibold" id="notifModalMethod">—</div>
+          </div>
+          <div class="col-12">
+            <div class="text-muted" style="font-size:11px">Submitted</div>
+            <div class="fw-semibold" id="notifModalSubmitted">—</div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <div class="text-muted mb-1" style="font-size:11px">Proof of Payment</div>
+          <div id="notifModalProofWrap" class="text-center"></div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-danger btn-sm fw-semibold" onclick="rejectFromNotifModal()">
+          <i class="bi bi-arrow-repeat me-1"></i>Reject
+        </button>
+        <button type="button" class="btn btn-success btn-sm fw-semibold" onclick="verifyFromNotifModal()">
+          <i class="bi bi-check-lg me-1"></i>Verify
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: IMAGE PREVIEW (requirements / payment proofs) ═══ -->
+<div class="modal fade" id="imagePreviewModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;overflow:hidden">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b" id="imagePreviewTitle">Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center pt-2">
+        <img id="imagePreviewImg" src="" alt="Preview" style="max-width:100%;max-height:70vh;border-radius:10px;border:1px solid #e2e8f0;object-fit:contain">
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <a id="imagePreviewOpenNew" href="#" target="_blank" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Open Full Size
+        </a>
+        <button type="button" class="btn btn-light btn-sm border" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ MODAL: MODERN PHOTO UPLOAD ═══ -->
 <div class="modal fade" id="managePhotoModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -1095,7 +1183,10 @@ body { margin:0; background:#f1f5f9; }
 <!-- MODAL: VIEW PROFILE -->
 @php
   $p = $profileEnrollment;
-  $closeHref = '?tab=applications';
+  // Same issue as the tab-restore JS: send Close back to whichever tab the
+  // profile was actually opened from, using the "from" param set on the
+  // View Profile links, instead of always assuming Applications.
+  $closeHref = request('from') === 'students' ? '?tab=students' : '?tab=applications';
 @endphp
 <div class="modal fade" id="phpModal" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -1218,7 +1309,7 @@ body { margin:0; background:#f1f5f9; }
                   @endif
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-shrink-0" id="req-doc-actions-{{ $doc->id }}">
-                  <a href="{{ asset('storage/' . $doc->path) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="font-size:12px"><i class="bi bi-eye me-1"></i>View</a>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:12px" onclick="showImagePreview('{{ asset('storage/' . $doc->path) }}', '{{ addslashes($doc->document_label) }}')"><i class="bi bi-eye me-1"></i>View</button>
                   @if($doc->status !== 'needs_resubmit' && !in_array($p->status, ['approved', 'enrolled']))
                   <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $doc->id }}, '{{ addslashes($doc->document_label) }}')">
                     <i class="bi bi-arrow-repeat me-1"></i>Flag for Resubmit
@@ -1277,7 +1368,7 @@ body { margin:0; background:#f1f5f9; }
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-shrink-0">
                   @if($pay->proof_of_payment)
-                  <a href="{{ asset('storage/' . $pay->proof_of_payment) }}" target="_blank" class="btn btn-outline-secondary btn-sm" style="font-size:12px"><i class="bi bi-eye me-1"></i>View Proof</a>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:12px" onclick="showImagePreview('{{ asset('storage/' . $pay->proof_of_payment) }}', '{{ addslashes($payLabel) }} — Proof of Payment')"><i class="bi bi-eye me-1"></i>View Proof</button>
                   @endif
                   @if($pay->status === 'pending')
                   <button type="button" class="btn btn-success btn-sm" style="font-size:12px" onclick="verifyTuitionPayment({{ $pay->id }})">
@@ -1302,11 +1393,11 @@ body { margin:0; background:#f1f5f9; }
               <span style="font-size:13px;font-weight:700;color:#1e293b">Proof of Payment</span>
             </div>
             <div style="padding:14px 16px">
-              <a href="{{ asset('storage/' . $p->proof_of_payment) }}" target="_blank"
-                 style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;text-decoration:none">
+              <button type="button" onclick="showImagePreview('{{ asset('storage/' . $p->proof_of_payment) }}', 'Proof of Payment')"
+                 style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px">
                 <i class="bi bi-file-earmark me-1"></i>View Payment Proof
-                <i class="bi bi-box-arrow-up-right"></i>
-              </a>
+                <i class="bi bi-eye"></i>
+              </button>
             </div>
           </div>
           @endif
@@ -1565,6 +1656,170 @@ function apiFetch(url, method = 'GET', body = null, isFormData = false) {
       return res.status === 204 ? null : res.json();
     });
 }
+
+/* ── Notification bell ── */
+function renderNotifIcon(type) {
+  return type === 'payment_proof_submitted' ? 'bi-cash-coin' : 'bi-bell';
+}
+
+// Cache of the last-loaded notifications, keyed by id, so a click can pull
+// the full data object (student name, amount, proof image, etc.) without a
+// second round trip — and without stuffing untrusted strings into onclick.
+let _notifCache = {};
+
+function loadNotifications() {
+  apiFetch('{{ route("admin.notifications.index") }}')
+    .then(data => {
+      const badge = document.getElementById('notifBadge');
+      if (data.unread_count > 0) {
+        badge.textContent = data.unread_count > 9 ? '9+' : data.unread_count;
+        badge.classList.remove('d-none');
+      } else {
+        badge.classList.add('d-none');
+      }
+
+      _notifCache = {};
+      data.notifications.forEach(n => { _notifCache[n.id] = n; });
+
+      const list = document.getElementById('notifList');
+      if (!data.notifications.length) {
+        list.innerHTML = '<div class="text-muted text-center" style="font-size:12.5px;padding:24px 12px">No notifications yet.</div>';
+        return;
+      }
+
+      list.innerHTML = data.notifications.map(n => `
+        <div class="d-flex align-items-start gap-2" style="padding:11px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;${n.read ? '' : 'background:#f0f9ff'}"
+             onclick="openNotification('${n.id}')">
+          <i class="bi ${renderNotifIcon(n.data.type)}" style="color:#0d9488;font-size:14px;margin-top:2px"></i>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:12.5px;color:#1e293b;line-height:1.4">${n.data.message ?? ''}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">${n.created_at}</div>
+          </div>
+          ${n.read ? '' : '<span style="width:7px;height:7px;border-radius:50%;background:#dc2626;flex-shrink:0;margin-top:5px"></span>'}
+        </div>
+      `).join('');
+    })
+    .catch(() => {});
+}
+
+function toggleNotifDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('notifDropdown');
+  const willOpen = dd.classList.contains('d-none');
+  dd.classList.toggle('d-none');
+  if (willOpen) loadNotifications();
+}
+
+document.addEventListener('click', function (e) {
+  const dd = document.getElementById('notifDropdown');
+  const btn = document.getElementById('notifBellBtn');
+  if (dd && !dd.classList.contains('d-none') && !dd.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    dd.classList.add('d-none');
+  }
+});
+
+/* Generic in-page viewer for requirement docs / payment proofs.
+   Keeps the admin on the current page (and current modal underneath)
+   instead of navigating to a new tab. */
+function showImagePreview(url, title) {
+  document.getElementById('imagePreviewTitle').textContent = title || 'Preview';
+  document.getElementById('imagePreviewImg').src = url;
+  document.getElementById('imagePreviewOpenNew').href = url;
+  new bootstrap.Modal(document.getElementById('imagePreviewModal')).show();
+}
+
+// The "View" buttons above live inside the profile modal, so this preview
+// opens as a second, stacked modal. Bootstrap 5 doesn't stack modals by
+// default (the new backdrop covers the first modal and closing this one
+// drops the "modal-open" body class even though the profile modal is still
+// showing) — these two listeners fix both issues.
+(function () {
+  const previewEl = document.getElementById('imagePreviewModal');
+  if (!previewEl) return;
+  previewEl.addEventListener('shown.bs.modal', function () {
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    if (backdrops.length > 1) {
+      backdrops[backdrops.length - 1].style.zIndex = 1070;
+      previewEl.style.zIndex = 1080;
+    }
+  });
+  previewEl.addEventListener('hidden.bs.modal', function () {
+    if (document.querySelectorAll('.modal.show').length) {
+      document.body.classList.add('modal-open');
+    }
+  });
+})();
+
+const NOTIF_METHOD_LABELS = { gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', cash: 'Cash' };
+
+function openNotification(id) {
+  const n = _notifCache[id];
+
+  // Mark read in the background regardless — dropdown badge/list stay accurate.
+  apiFetch(`/admin/notifications/${id}/read`, 'POST').then(loadNotifications).catch(() => {});
+
+  if (!n) return; // fell out of the cached top-20; nothing more to show
+
+  if (n.data.type === 'payment_proof_submitted') {
+    showPaymentNotifModal(n.data);
+  } else if (n.data.enrollment_id) {
+    // Fallback for any future notification type that isn't a payment proof.
+    window.location = `?modal=profile&app_id=${n.data.enrollment_id}&from=students`;
+  }
+}
+
+let _notifModalPaymentId = null;
+
+function showPaymentNotifModal(data) {
+  _notifModalPaymentId = data.payment_id;
+
+  document.getElementById('notifModalStudent').textContent = data.student_name || '—';
+  document.getElementById('notifModalParent').textContent = data.parent_name || '—';
+  document.getElementById('notifModalLabel').textContent = data.label || '—';
+  document.getElementById('notifModalAmount').textContent = '₱' + Number(data.amount_due || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
+  document.getElementById('notifModalMethod').textContent = NOTIF_METHOD_LABELS[data.payment_method] || data.payment_method || '—';
+  document.getElementById('notifModalSubmitted').textContent = data.submitted_at || '—';
+
+  const proofWrap = document.getElementById('notifModalProofWrap');
+  if (data.proof_of_payment) {
+    proofWrap.innerHTML = `<a href="${data.proof_of_payment}" target="_blank">
+      <img src="${data.proof_of_payment}" alt="Proof of payment" style="max-width:100%;max-height:260px;border-radius:10px;border:1px solid #e2e8f0;object-fit:contain">
+    </a>`;
+  } else {
+    proofWrap.innerHTML = '<div class="text-muted" style="font-size:12.5px">No proof image attached.</div>';
+  }
+
+  // Close the notif dropdown so it doesn't sit behind the modal backdrop.
+  document.getElementById('notifDropdown').classList.add('d-none');
+
+  bsModal('notifDetailModal').show();
+}
+
+function verifyFromNotifModal() {
+  if (!_notifModalPaymentId) return;
+  bsModal('notifDetailModal').hide();
+  verifyTuitionPayment(_notifModalPaymentId);
+}
+
+function rejectFromNotifModal() {
+  if (!_notifModalPaymentId) return;
+  const label = document.getElementById('notifModalLabel').textContent;
+  bsModal('notifDetailModal').hide();
+  openResubmitModal(_notifModalPaymentId, label, true);
+}
+
+function markAllNotifsRead(e) {
+  e.stopPropagation();
+  apiFetch('{{ route("admin.notifications.readAll") }}', 'POST')
+    .then(() => loadNotifications())
+    .catch(() => {});
+}
+
+// Initial load + light polling so the badge updates without a full refresh
+document.addEventListener('DOMContentLoaded', function () {
+  loadNotifications();
+  setInterval(loadNotifications, 30000);
+});
 
 /* ── Generate sections for a grade level ── */
 function generateSections(gradeLevel, btn) {
@@ -2185,8 +2440,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modalParam === 'addStudent' || modalParam === 'export' || modalParam === 'transfer') {
     sessionStorage.setItem('adminTab', 'students');
   } else if (modalParam === 'profile') {
-    // Stay on applications if opened from an application, students if opened from a student record
-    if (urlParams.get('app_id')) {
+    // Stay on applications if opened from an application, students if opened from a student record.
+    // Both links pass the row's id as app_id, so we can't tell them apart by that param alone —
+    // the explicit "from" param (set by the link that was actually clicked) is the source of truth.
+    const profileFrom = urlParams.get('from');
+    if (profileFrom === 'students') {
+      sessionStorage.setItem('adminTab', 'students');
+    } else if (profileFrom === 'applications') {
+      sessionStorage.setItem('adminTab', 'applications');
+    } else if (urlParams.get('app_id')) {
+      // Fallback for older links without "from" (e.g. the notification redirect below)
       sessionStorage.setItem('adminTab', 'applications');
     } else {
       sessionStorage.setItem('adminTab', 'students');

@@ -194,10 +194,31 @@ class TuitionController extends Controller
             'feedback'         => null,
         ]);
 
+        $this->notifyAdminsOfProofSubmission($payment);
+
         return response()->json([
             'success' => true,
             'message' => 'Proof of payment submitted. Awaiting admin verification.',
         ]);
+    }
+
+    /**
+     * Notifies every admin scoped to manage this student's grade level
+     * (same canManageGrade() rule enforced on verify()/reject()) that a
+     * proof of payment is waiting for review.
+     */
+    private function notifyAdminsOfProofSubmission(TuitionPayment $payment): void
+    {
+        $grade = $payment->plan->enrollment->grade_level;
+
+        $admins = \App\Models\User::where('role', 'admin')
+            ->get()
+            ->filter(fn ($admin) => $admin->canManageGrade($grade));
+
+        \Illuminate\Support\Facades\Notification::send(
+            $admins,
+            new \App\Notifications\TuitionProofSubmitted($payment)
+        );
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SectionController;
 use App\Http\Controllers\TuitionController;
 use App\Http\Controllers\PushSubscriptionController;
+use App\Http\Controllers\NotificationController;
 // ── PUBLIC ROUTES ─────────────────────────────────────────────────────────────
 Route::get('/',               [Authcontroller::class, 'landingpage'])->name('landingpage');
 Route::get('/logout',         [Authcontroller::class, 'logout'])->name('logout');
@@ -69,6 +70,11 @@ Route::post('/profile/update-password', [Authcontroller::class, 'updatePassword'
 // admin or super_admin view, so both roles must be allowed here.
 Route::middleware(['auth:web', 'role:admin,superadmin'])->group(function () {
     Route::get('/admin', [Authcontroller::class, 'adminportal'])->name('admin.dashboard')->middleware('no.cache');
+
+    // Notification bell — both admin and superadmin can receive payment-proof alerts.
+    Route::get('/admin/notifications', [NotificationController::class, 'index'])->name('admin.notifications.index');
+    Route::post('/admin/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('admin.notifications.read');
+    Route::post('/admin/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('admin.notifications.readAll');
 });
 
 // The rest of /admin/* is only ever called from the admin dashboard's own JS
