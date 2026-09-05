@@ -16,6 +16,11 @@ Route::get('/',               [Authcontroller::class, 'landingpage'])->name('lan
 Route::get('/logout',         [Authcontroller::class, 'logout'])->name('logout');
 Route::get('/terms',   [App\Http\Controllers\LegalController::class, 'terms'])->name('terms.show');
 Route::get('/privacy', [App\Http\Controllers\LegalController::class, 'privacy'])->name('privacy.show');
+Route::get('/clear-view', function() {
+    Artisan::call('view:clear');
+    return 'Blade view cache cleared successfully!';
+});
+
 
 // Guest-only: an already-logged-in user is redirected to their dashboard
 // instead of seeing these — they must log out first to reach them again.
