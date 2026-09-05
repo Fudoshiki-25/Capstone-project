@@ -64,7 +64,17 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body px-4">
-            <div class="text-muted mb-3" style="font-size:12.5px" id="submitPaymentInstallmentLabel"></div>
+            <div class="text-muted mb-1" style="font-size:12.5px" id="submitPaymentInstallmentLabel"></div>
+            <div class="text-muted mb-3" style="font-size:11.5px" id="submitPaymentRemainingLabel"></div>
+
+            <div class="mb-3">
+              <label class="form-label fw-medium" style="font-size:12.5px">Amount You're Paying <span class="text-danger">*</span></label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">₱</span>
+                <input type="number" class="form-control" id="submitPaymentAmount" min="1" step="0.01" placeholder="0.00">
+              </div>
+              <div class="text-muted mt-1" style="font-size:11px">You can pay the full remaining amount, or send a partial payment and cover the rest later.</div>
+            </div>
 
             <div class="mb-3">
               <label class="form-label fw-medium" style="font-size:12.5px">Mode of Payment <span class="text-danger">*</span></label>

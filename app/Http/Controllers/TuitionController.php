@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GradeTuitionFee;
 use App\Models\StudentEnrollment;
 use App\Models\TuitionPayment;
+use App\Models\TuitionPaymentProof;
 use App\Support\ImageUploadStorer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,7 +34,7 @@ class TuitionController extends Controller
             ], 403);
         }
 
-        $plan = $enrollment->tuitionPlan()->with('payments')->first();
+        $plan = $enrollment->tuitionPlan()->with('payments.proofs')->first();
 
         if (! $plan) {
             return response()->json(['plan' => null, 'payments' => []]);
@@ -41,10 +42,10 @@ class TuitionController extends Controller
 
         $payments = $plan->payments->sortBy('installment_number')->values();
 
-        // Only 'paid' (admin-verified) installments count against the total —
-        // a 'pending' proof upload isn't confirmed money yet, so it shouldn't
-        // shrink the remaining balance until an admin verifies it.
-        $totalPaid = (float) $payments->where('status', 'paid')->sum('amount_due');
+        // Only verified proofs count against the total — a 'pending' proof
+        // upload isn't confirmed money yet, so it shouldn't shrink the
+        // remaining balance until an admin verifies it.
+        $totalPaid = (float) $payments->sum(fn ($p) => $p->verifiedAmount());
         $totalAmount = (float) $plan->total_amount;
         $remainingBalance = max(0, $totalAmount - $totalPaid);
 
@@ -56,40 +57,51 @@ class TuitionController extends Controller
                 'total_paid'        => $totalPaid,
                 'remaining_balance' => $remainingBalance,
             ],
-            // installment_number 0 is the down payment — a real, admin-
-            // verified row like every other installment (see
-            // TuitionPlan::generateForEnrollment). No longer a separate
-            // synthesized "always paid" block.
+            // installment_number 0 is the down payment — a real row like
+            // every other installment (see TuitionPlan::generateForEnrollment).
             //
-            // Every installment (paid, pending, unpaid, or needs_resubmit)
-            // is returned so the frontend can let a parent submit proof for
-            // any future installment ahead of its due date, not only the
-            // next one in sequence — uploadProof() below places no
-            // restriction on order or due date.
-            'payments' => $payments->map(fn ($p) => [
-                'id'                  => $p->id,
-                'installment_number'  => $p->installment_number,
-                'amount_due'          => (float) $p->amount_due,
-                'due_date'            => $p->due_date->format('M j, Y'),
-                'status'              => $p->status,
-                'proof_of_payment'    => $p->proof_of_payment ? asset('storage/' . $p->proof_of_payment) : null,
-                'payment_method'      => self::methodLabel($p->payment_method),
-                'submitted_at'        => $p->submitted_at?->format('M j, Y g:i A'),
-                'verified_at'         => $p->paid_at?->format('M j, Y g:i A'),
-                'feedback'            => $p->feedback,
-                // Lets the frontend show a "Pay Now" button on any
-                // unpaid/needs-resubmit installment, not just the earliest
-                // due one — supports paying ahead of schedule.
-                'can_submit_proof'    => in_array($p->status, ['unpaid', 'needs_resubmit'], true),
-            ]),
+            // Every installment is returned so the frontend can let a
+            // parent submit proof for any future installment ahead of its
+            // due date, and can submit another partial proof against the
+            // same installment as long as a balance remains.
+            'payments' => $payments->map(function ($p) {
+                $verifiedAmount = $p->verifiedAmount();
+                $remaining = $p->remainingBalance();
+
+                return [
+                    'id'                 => $p->id,
+                    'installment_number' => $p->installment_number,
+                    'amount_due'         => (float) $p->amount_due,
+                    'due_date'           => $p->due_date->format('M j, Y'),
+                    'status'             => $p->status, // unpaid | partial | paid
+                    'verified_amount'    => $verifiedAmount,
+                    'remaining_balance'  => $remaining,
+                    'feedback'           => $p->feedback,
+                    // A parent can submit proof for any amount up to what's
+                    // left, any number of times, until the balance hits 0.
+                    'can_submit_proof'   => $remaining > 0,
+                    // Every proof ever submitted for this installment, most
+                    // recent first — lets the parent see "₱950 verified,
+                    // ₱500 pending review" instead of just one flat status.
+                    'proofs' => $p->proofs->sortByDesc('submitted_at')->values()->map(fn ($proof) => [
+                        'id'               => $proof->id,
+                        'amount'           => (float) $proof->amount,
+                        'status'           => $proof->status, // pending | verified | rejected
+                        'payment_method'   => self::methodLabel($proof->payment_method),
+                        'proof_of_payment' => asset('storage/' . $proof->proof_of_payment),
+                        'submitted_at'     => $proof->submitted_at->format('M j, Y g:i A'),
+                        'verified_at'      => $proof->verified_at?->format('M j, Y g:i A'),
+                        'feedback'         => $proof->feedback,
+                    ]),
+                ];
+            }),
         ]);
     }
 
     /**
      * GET /tuition/history
      * Parent-facing: a single combined payment history across ALL of this
-     * parent's children — down payments + every installment ever submitted,
-     * most recent first.
+     * parent's children — every proof ever submitted, most recent first.
      */
     public function history(Request $request)
     {
@@ -97,7 +109,7 @@ class TuitionController extends Controller
 
         $enrollments = StudentEnrollment::where('user_id', $parent->id)
             ->whereIn('status', ['approved', 'enrolled'])
-            ->with('tuitionPlan.payments')
+            ->with('tuitionPlan.payments.proofs')
             ->get();
 
         $rows = collect();
@@ -110,22 +122,22 @@ class TuitionController extends Controller
                 continue;
             }
 
-            // installment_number 0 is the down payment — a real row, same
-            // as every other installment (see TuitionPlan::generateForEnrollment).
             foreach ($plan->payments as $p) {
-                if (! $p->submitted_at) {
-                    continue; // never submitted yet — nothing to show in history
-                }
+                $label = $p->installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' . $p->installment_number;
 
-                $rows->push([
-                    'child'          => $childName,
-                    'label'          => $p->installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' . $p->installment_number,
-                    'amount'         => (float) $p->amount_due,
-                    'payment_method' => self::methodLabel($p->payment_method),
-                    'submitted_at'   => $p->submitted_at->format('M j, Y g:i A'),
-                    'verified_at'    => $p->paid_at?->format('M j, Y g:i A'),
-                    'status'         => $p->status,
-                ]);
+                // Every proof is its own history row now, since one
+                // installment can have several partial submissions.
+                foreach ($p->proofs as $proof) {
+                    $rows->push([
+                        'child'          => $childName,
+                        'label'          => $label,
+                        'amount'         => (float) $proof->amount,
+                        'payment_method' => self::methodLabel($proof->payment_method),
+                        'submitted_at'   => $proof->submitted_at->format('M j, Y g:i A'),
+                        'verified_at'    => $proof->verified_at?->format('M j, Y g:i A'),
+                        'status'         => $proof->status,
+                    ]);
+                }
             }
         }
 
@@ -147,38 +159,35 @@ class TuitionController extends Controller
 
     /**
      * POST /tuition/payments/{payment}/upload-proof
-     * Parent uploads proof of payment for one installment. Moves it from
-     * 'unpaid' (or 'needs_resubmit'-style flagged 'unpaid' with feedback)
-     * to 'pending', awaiting admin verification.
-     *
-     * No restriction is placed on installment order or due date — a parent
-     * may submit proof for a future installment ahead of schedule as long
-     * as it isn't already 'paid'.
+     * Parent submits proof of payment for an installment — for any amount
+     * up to what's still owed on it. Multiple proofs can stack against the
+     * same installment (e.g. ₱950 now, ₱500 later, ₱500 after that); each
+     * is reviewed by an admin independently, so a pending proof never
+     * blocks another submission.
      */
     public function uploadProof(Request $request, TuitionPayment $payment)
     {
-        $request->validate([
-            'file'           => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
-            'payment_method' => 'required|in:gcash,maya,bank_transfer,cash',
-        ]);
-
         $parent = Auth::guard('parent')->user();
 
         if ($payment->plan->enrollment->user_id !== $parent->id) {
             abort(403, 'You do not have permission to update this payment.');
         }
 
-        if ($payment->status === 'paid') {
+        $remaining = $payment->remainingBalance();
+
+        if ($remaining <= 0) {
             return response()->json([
-                'message' => 'This installment has already been verified and can no longer be changed.',
+                'message' => 'This installment has already been fully paid.',
             ], 422);
         }
 
-        if ($payment->status === 'pending') {
-            return response()->json([
-                'message' => 'This installment already has a proof of payment awaiting verification.',
-            ], 422);
-        }
+        $request->validate([
+            'file'           => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'payment_method' => 'required|in:gcash,maya,bank_transfer,cash',
+            // Capped at what's left so a parent can't submit proof for more
+            // than the installment actually owes.
+            'amount'         => 'required|numeric|min:1|max:' . $remaining,
+        ]);
 
         $path = ImageUploadStorer::store(
             $request->file('file'),
@@ -186,19 +195,20 @@ class TuitionController extends Controller
             'public'
         );
 
-        $payment->update([
-            'proof_of_payment' => $path,
-            'payment_method'   => $request->input('payment_method'),
-            'submitted_at'     => now(),
-            'status'           => 'pending',
-            'feedback'         => null,
+        $proof = TuitionPaymentProof::create([
+            'tuition_payment_id' => $payment->id,
+            'amount'             => $request->input('amount'),
+            'payment_method'     => $request->input('payment_method'),
+            'proof_of_payment'   => $path,
+            'status'             => 'pending',
+            'submitted_at'       => now(),
         ]);
 
         // Notification failures must never turn an already-saved upload
-        // into a 500 for the parent — the payment row above is committed
+        // into a 500 for the parent — the proof row above is committed
         // by this point regardless of what happens here.
         try {
-            $this->notifyAdminsOfProofSubmission($payment);
+            $this->notifyAdminsOfProofSubmission($proof);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -211,12 +221,12 @@ class TuitionController extends Controller
 
     /**
      * Notifies every admin scoped to manage this student's grade level
-     * (same canManageGrade() rule enforced on verify()/reject()), plus
-     * every superadmin, who oversee all grades.
+     * (same canManageGrade() rule enforced on verifyProof()/rejectProof()),
+     * plus every superadmin, who oversee all grades.
      */
-    private function notifyAdminsOfProofSubmission(TuitionPayment $payment): void
+    private function notifyAdminsOfProofSubmission(TuitionPaymentProof $proof): void
     {
-        $grade = $payment->plan->enrollment->grade_level;
+        $grade = $proof->payment->plan->enrollment->grade_level;
 
         $admins = \App\Models\User::whereIn('role', ['admin', 'superadmin'])
             ->get()
@@ -224,71 +234,100 @@ class TuitionController extends Controller
 
         \Illuminate\Support\Facades\Notification::send(
             $admins,
-            new \App\Notifications\TuitionProofSubmitted($payment)
+            new \App\Notifications\TuitionProofSubmitted($proof)
         );
     }
 
     /**
-     * POST /admin/tuition/payments/{payment}/verify
-     * Admin confirms a pending payment as received.
+     * POST /admin/tuition/proofs/{proof}/verify
+     * Admin confirms one submitted proof as received. Since there's no
+     * payment gateway, the system only knows what the parent typed as the
+     * amount — not what actually arrived — so the admin can optionally
+     * correct it here (pre-filled with the parent's claim) based on what
+     * the receipt actually shows. The installment's overall status
+     * (unpaid/partial/paid) is recalculated from the sum of all verified
+     * proofs' credited amounts, not just this one.
      */
-    public function verify(Request $request, TuitionPayment $payment)
+    public function verifyProof(Request $request, TuitionPaymentProof $proof)
     {
+        $payment = $proof->payment;
+
         if (! $request->user()->canManageGrade($payment->plan->enrollment->grade_level)) {
             abort(403, 'You are not assigned to manage this student\'s grade level.');
         }
 
-        if ($payment->status !== 'pending') {
+        if ($proof->status !== 'pending') {
             return response()->json([
-                'message' => 'Only a submitted (pending) payment can be verified.',
+                'message' => 'Only a submitted (pending) proof can be verified.',
             ], 422);
         }
 
-        $payment->update([
-            'status'      => 'paid',
-            'paid_at'     => now(),
-            'verified_by' => $request->user()->id,
-            'feedback'    => null,
+        // The corrected amount can't exceed what's actually left owing on
+        // the installment (remainingBalance() already excludes this proof,
+        // since it isn't verified yet).
+        $request->validate([
+            'amount' => 'nullable|numeric|min:0.01|max:' . $payment->remainingBalance(),
         ]);
+
+        $correctedAmount = $request->filled('amount') ? round((float) $request->input('amount'), 2) : null;
+
+        $proof->update([
+            'status'          => 'verified',
+            // Only stored when it actually differs from what the parent
+            // claimed — leaving it null means "trust the parent's figure",
+            // matching creditedAmount()'s fallback.
+            'verified_amount' => ($correctedAmount !== null && $correctedAmount != (float) $proof->amount) ? $correctedAmount : null,
+            'verified_at'     => now(),
+            'verified_by'     => $request->user()->id,
+            'feedback'        => null,
+        ]);
+
+        $payment->refreshStatus();
 
         \App\Models\ActivityLog::record(
             $request->user(),
             'Verified Tuition Payment',
             trim($payment->plan->enrollment->first_name . ' ' . $payment->plan->enrollment->last_name)
                 . ' — ' . ($payment->installment_number === 0 ? 'Down Payment' : 'Installment ' . $payment->installment_number)
-                . ' (₱' . number_format((float) $payment->amount_due, 2) . ')',
+                . ' (₱' . number_format($proof->creditedAmount(), 2) . ')',
             'success'
         );
 
         return response()->json([
-            'success' => true,
-            'message' => 'Payment marked as paid.',
+            'success'             => true,
+            'message'             => 'Payment marked as paid.',
+            'installment_status'  => $payment->status,
+            'verified_amount'     => $payment->verifiedAmount(),
+            'remaining_balance'   => $payment->remainingBalance(),
         ]);
     }
 
     /**
-     * POST /admin/tuition/payments/{payment}/reject
-     * Admin flags a submitted proof as wrong/unclear — sends it back to the
-     * parent as 'unpaid' with a note, same pattern as requirement resubmits.
+     * POST /admin/tuition/proofs/{proof}/reject
+     * Admin flags one submitted proof as wrong/unclear — sends it back to
+     * the parent with a note. Doesn't touch any other proof already
+     * verified against the same installment.
      */
-    public function reject(Request $request, TuitionPayment $payment)
+    public function rejectProof(Request $request, TuitionPaymentProof $proof)
     {
         $request->validate(['feedback' => 'required|string|max:500']);
+
+        $payment = $proof->payment;
 
         if (! $request->user()->canManageGrade($payment->plan->enrollment->grade_level)) {
             abort(403, 'You are not assigned to manage this student\'s grade level.');
         }
 
-        if ($payment->status !== 'pending') {
+        if ($proof->status !== 'pending') {
             return response()->json([
-                'message' => 'Only a submitted (pending) payment can be rejected.',
+                'message' => 'Only a submitted (pending) proof can be rejected.',
             ], 422);
         }
 
-        $payment->update([
-            'status'      => 'unpaid',
+        $proof->update([
+            'status'      => 'rejected',
             'feedback'    => $request->input('feedback'),
-            'paid_at'     => null,
+            'verified_at' => null,
             'verified_by' => null,
         ]);
 
@@ -296,13 +335,63 @@ class TuitionController extends Controller
             $request->user(),
             'Rejected Tuition Payment',
             trim($payment->plan->enrollment->first_name . ' ' . $payment->plan->enrollment->last_name)
-                . ' — ' . ($payment->installment_number === 0 ? 'Down Payment' : 'Installment ' . $payment->installment_number),
+                . ' — ' . ($payment->installment_number === 0 ? 'Down Payment' : 'Installment ' . $payment->installment_number)
+                . ' (₱' . number_format((float) $proof->amount, 2) . ')',
             'warning'
         );
 
         return response()->json([
             'success' => true,
             'message' => 'Parent has been notified to resubmit this payment.',
+        ]);
+    }
+
+    /**
+     * PATCH /admin/tuition/payments/{payment}/adjust-amount
+     * Direct balance override — admin can correct an installment's billed
+     * amount at any time (e.g. a data-entry mistake, applying a discount or
+     * waiver), independent of any proof. Since there's no payment gateway,
+     * this is the only way to fix the amount actually owed if it was wrong
+     * to begin with, separately from correcting what a specific proof paid.
+     */
+    public function adjustAmount(Request $request, TuitionPayment $payment)
+    {
+        if (! $request->user()->canManageGrade($payment->plan->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
+        $request->validate([
+            'amount_due' => 'required|numeric|min:0',
+            'reason'     => 'nullable|string|max:255',
+        ]);
+
+        $oldAmount = (float) $payment->amount_due;
+        $newAmount = round((float) $request->input('amount_due'), 2);
+
+        $payment->update(['amount_due' => $newAmount]);
+
+        // Billed amount changed — the installment may now be fully covered
+        // by what's already verified (or no longer be), so recompute.
+        $payment->refreshStatus();
+
+        $label = $payment->installment_number === 0 ? 'Down Payment' : 'Installment ' . $payment->installment_number;
+        $studentName = trim($payment->plan->enrollment->first_name . ' ' . $payment->plan->enrollment->last_name);
+        $reasonSuffix = $request->filled('reason') ? ' — ' . $request->input('reason') : '';
+
+        \App\Models\ActivityLog::record(
+            $request->user(),
+            'Adjusted Tuition Amount',
+            $studentName . ' — ' . $label . ' (₱' . number_format($oldAmount, 2) . ' → ₱' . number_format($newAmount, 2) . ')' . $reasonSuffix,
+            'warning'
+        );
+
+        return response()->json([
+            'success'            => true,
+            'message'            => 'Installment amount updated.',
+            'amount_due'         => $newAmount,
+            'installment_status' => $payment->fresh()->status,
+            'verified_amount'    => $payment->verifiedAmount(),
+            'remaining_balance'  => $payment->remainingBalance(),
         ]);
     }
 

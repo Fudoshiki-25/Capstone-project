@@ -773,18 +773,23 @@ body { margin:0; background:#f1f5f9; }
 
                   if ($stu->status === 'enrolled') {
                     $watchPayment = $payments->where('installment_number', '>', 0)
-                      ->whereIn('status', ['unpaid', 'pending', 'needs_resubmit'])
+                      ->whereIn('status', ['unpaid', 'partial'])
                       ->sortBy('due_date')
                       ->first();
                   } else {
                     $watchPayment = $downPayment;
                   }
+
+                  // A proof can be pending review on an installment
+                  // regardless of its overall unpaid/partial/paid status
+                  // (e.g. ₱950 already verified, a further ₱500 pending).
+                  $hasAnyPendingProof = $payments->contains(fn ($pay) => $pay->hasPendingProof());
                 @endphp
                 <tr>
                   <td>{{ $i + 1 }}</td>
                   <td>
                     <span class="stu-avatar {{ $avatarColor }}">{{ $stuInitials }}</span> {{ $stuFullName }}
-                    @if($watchPayment && $watchPayment->status === 'pending')
+                    @if($hasAnyPendingProof)
                       <span title="Payment proof awaiting review" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-left:5px;vertical-align:middle"></span>
                     @endif
                   </td>
@@ -803,10 +808,8 @@ body { margin:0; background:#f1f5f9; }
                     @elseif(!$watchPayment)
                       {{-- enrolled student with every installment already paid --}}
                       <span class="badge rounded-pill px-2" style="background:#dcfce7;color:#166534;font-size:11px">Paid</span>
-                    @elseif($watchPayment->status === 'pending')
-                      <span class="badge rounded-pill px-2" style="background:#e0f2fe;color:#0369a1;font-size:11px">Pending</span>
-                    @elseif($watchPayment->status === 'needs_resubmit')
-                      <span class="badge rounded-pill px-2" style="background:#fee2e2;color:#b91c1c;font-size:11px">Needs Resubmit</span>
+                    @elseif($watchPayment->status === 'partial')
+                      <span class="badge rounded-pill px-2" style="background:#e0f2fe;color:#0369a1;font-size:11px">Partially Paid</span>
                     @elseif($watchPayment->status === 'unpaid')
                       <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">
                         {{ $watchPayment->due_date->isPast() ? 'Overdue' : 'Unpaid' }}
@@ -1104,6 +1107,74 @@ body { margin:0; background:#f1f5f9; }
   </div>
 </div>
 
+<!-- ═══ MODAL: VERIFY PAYMENT (amount confirmation) ═══ -->
+<div class="modal fade" id="verifyProofModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-check-circle me-2" style="color:#16a34a"></i>Verify Payment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted mb-3" style="font-size:12.5px" id="verifyProofLabel"></div>
+        <div class="mb-1">
+          <label class="form-label fw-medium" style="font-size:12.5px">Amount to credit</label>
+          <div class="input-group">
+            <span class="input-group-text">₱</span>
+            <input type="number" step="0.01" min="0.01" class="form-control" id="verifyProofAmount">
+          </div>
+          <div class="text-muted mt-1" style="font-size:11px">
+            Pre-filled with what the parent claimed. Since there's no payment gateway, correct this if the receipt shows a different amount.
+          </div>
+        </div>
+        <div id="verifyProofError" class="text-danger d-none mt-2" style="font-size:12px"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success btn-sm fw-semibold" id="verifyProofSubmitBtn" onclick="confirmVerifyProof()">
+          <i class="bi bi-check-lg me-1"></i>Verify
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: ADJUST INSTALLMENT AMOUNT (direct balance override) ═══ -->
+<div class="modal fade" id="adjustAmountModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-pencil-square me-2" style="color:#0369a1"></i>Adjust Installment Amount</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted mb-3" style="font-size:12.5px" id="adjustAmountLabel"></div>
+        <div class="mb-2">
+          <label class="form-label fw-medium" style="font-size:12.5px">Billed amount</label>
+          <div class="input-group">
+            <span class="input-group-text">₱</span>
+            <input type="number" step="0.01" min="0" class="form-control" id="adjustAmountValue">
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-medium" style="font-size:12.5px">Reason <span class="text-muted fw-normal">(optional, kept in the activity log)</span></label>
+          <input type="text" class="form-control" id="adjustAmountReason" placeholder="e.g. Sibling discount applied, data-entry correction">
+        </div>
+        <div class="text-muted mt-2" style="font-size:11px">
+          This directly changes what's owed on this installment — independent of any submitted proof. Use it for corrections, discounts, or waivers.
+        </div>
+        <div id="adjustAmountError" class="text-danger d-none mt-2" style="font-size:12px"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-navy btn-sm fw-semibold" id="adjustAmountSubmitBtn" onclick="confirmAdjustAmount()">
+          <i class="bi bi-check-lg me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ MODAL: IMAGE PREVIEW (requirements / payment proofs) ═══ -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1197,6 +1268,16 @@ body { margin:0; background:#f1f5f9; }
         $pFullName = $p->first_name . ' ' . ($p->middle_name && $p->middle_name !== 'N/A' ? $p->middle_name . ' ' : '') . $p->last_name . ($p->suffix && $p->suffix !== 'N/A' ? ', ' . $p->suffix : '');
         $pAge = $p->birthday ? \Carbon\Carbon::parse($p->birthday)->age : '—';
         $pRequirements = $p->requirements ?? collect();
+
+        // Approve should be blocked until every REQUIRED document (not the
+        // optional ones like Good Moral / Medical Cert for non-Kinder) has
+        // actually been individually verified — otherwise admin can approve
+        // an application while a required document still sits unreviewed.
+        $pRequiredDocTypes = \App\Http\Controllers\EnrollmentController::requiredDocumentTypes($p->grade_level, $p->student_type);
+        $pAllRequiredApproved = collect($pRequiredDocTypes)->every(function ($type) use ($pRequirements) {
+            $doc = $pRequirements->firstWhere('document_type', $type);
+            return $doc && $doc->status === 'approved';
+        });
       @endphp
       <div style="background:linear-gradient(135deg,#1e3a8a 0%,#0d9488 100%);padding:28px 28px 20px;position:relative">
         <a href="{{ $closeHref }}" class="btn-close btn-close-white position-absolute top-0 end-0 m-3"></a>
@@ -1230,6 +1311,10 @@ body { margin:0; background:#f1f5f9; }
         </div>
       </div>
       <div class="modal-body p-0" style="background:#f8fafc">
+        <style>
+          .detail-label { font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.03em; margin-bottom:3px; }
+          .detail-value { font-size:13.5px; font-weight:600; color:#1e293b; line-height:1.4; }
+        </style>
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
 
           {{-- Learner Info --}}
@@ -1239,15 +1324,39 @@ body { margin:0; background:#f1f5f9; }
               <span style="font-size:13px;font-weight:700;color:#1e293b">Learner Information</span>
             </div>
             <div style="padding:18px 16px">
-              <div class="row g-3">
-                <div class="col-12"><div style="font-size:10.5px;color:#94a3b8;margin-bottom:2px">Full Name</div><div style="font-size:15px;font-weight:700;color:#1e293b">{{ $p->last_name }}, {{ $p->first_name }} {{ $p->middle_name !== 'N/A' ? $p->middle_name : '' }}</div></div>
-                <div class="col-6 col-md-4"><div style="font-size:10.5px;color:#94a3b8">LRN</div><div style="font-size:13px;font-weight:600;font-family:monospace">{{ $p->lrn !== 'N/A' ? $p->lrn : '—' }}</div></div>
-                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Date of Birth</div><div style="font-size:13px;font-weight:600">{{ $p->birthday ? \Carbon\Carbon::parse($p->birthday)->format('M d, Y') : '—' }}</div></div>
-                <div class="col-3 col-md-2"><div style="font-size:10.5px;color:#94a3b8">Age</div><div style="font-size:13px;font-weight:600">{{ $pAge }}</div></div>
-                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Last School Attended</div><div style="font-size:13px;font-weight:600">{{ $p->last_school ?? '—' }}</div></div>
-                <div class="col-md-6"><div style="font-size:10.5px;color:#94a3b8">Place of Birth</div><div style="font-size:13px;font-weight:600">{{ $p->birth_place }}</div></div>
-                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Preferred Session</div><div style="font-size:13px;font-weight:600">{{ $p->preferred_session }}</div></div>
-                <div class="col-6 col-md-3"><div style="font-size:10.5px;color:#94a3b8">Payment Method</div><div style="font-size:13px;font-weight:600">{{ ucfirst(str_replace('_',' ',$p->payment_method)) }}</div></div>
+              <div class="row g-4">
+                <div class="col-12">
+                  <div class="detail-label">Full Name</div>
+                  <div class="detail-value" style="font-size:15px;font-weight:700">{{ $p->last_name }}, {{ $p->first_name }} {{ $p->middle_name !== 'N/A' ? $p->middle_name : '' }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">LRN</div>
+                  <div class="detail-value" style="font-family:monospace">{{ $p->lrn !== 'N/A' ? $p->lrn : '—' }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">Date of Birth</div>
+                  <div class="detail-value">{{ $p->birthday ? \Carbon\Carbon::parse($p->birthday)->format('M d, Y') : '—' }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">Age</div>
+                  <div class="detail-value">{{ $pAge }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">Preferred Session</div>
+                  <div class="detail-value">{{ $p->preferred_session }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">Payment Method</div>
+                  <div class="detail-value">{{ ucfirst(str_replace('_',' ',$p->payment_method)) }}</div>
+                </div>
+                <div class="col-6 col-md-3">
+                  <div class="detail-label">Last School Attended</div>
+                  <div class="detail-value">{{ $p->last_school ?? '—' }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <div class="detail-label">Place of Birth</div>
+                  <div class="detail-value">{{ $p->birth_place }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -1310,6 +1419,11 @@ body { margin:0; background:#f1f5f9; }
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-shrink-0" id="req-doc-actions-{{ $doc->id }}">
                   <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:12px" onclick="showImagePreview('{{ asset('storage/' . $doc->path) }}', '{{ addslashes($doc->document_label) }}')"><i class="bi bi-eye me-1"></i>View</button>
+                  @if($doc->status === 'pending' && !in_array($p->status, ['approved', 'enrolled']))
+                  <button type="button" class="btn btn-success btn-sm" style="font-size:12px" onclick="verifyRequirementDoc({{ $doc->id }})">
+                    <i class="bi bi-check-lg me-1"></i>Verify
+                  </button>
+                  @endif
                   @if($doc->status !== 'needs_resubmit' && !in_array($p->status, ['approved', 'enrolled']))
                   <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $doc->id }}, '{{ addslashes($doc->document_label) }}')">
                     <i class="bi bi-arrow-repeat me-1"></i>Flag for Resubmit
@@ -1334,51 +1448,76 @@ body { margin:0; background:#f1f5f9; }
               @foreach($p->tuitionPlan->payments->sortBy('installment_number') as $pay)
               @php
                 $payLabel = $pay->installment_number === 0 ? 'Upon Enrollment (Down Payment)' : 'Installment ' . $pay->installment_number;
+                $payMethodLabels = ['gcash'=>'GCash','maya'=>'Maya','bank_transfer'=>'Bank Transfer','cash'=>'Cash'];
+                $verifiedAmount = $pay->verifiedAmount();
+                $remaining = $pay->remainingBalance();
+                $proofsSorted = $pay->proofs->sortByDesc('submitted_at');
               @endphp
-              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 rounded-3" id="tuition-pay-{{ $pay->id }}" style="background:#f8fafc;border:1px solid #e2e8f0">
+              <div class="d-flex flex-column gap-2 p-3 rounded-3" id="tuition-pay-{{ $pay->id }}" style="background:#f8fafc;border:1px solid #e2e8f0">
                 <div style="min-width:0;flex:1">
-                  @php
-                    $payMethodLabels = ['gcash'=>'GCash','maya'=>'Maya','bank_transfer'=>'Bank Transfer','cash'=>'Cash'];
-                  @endphp
-                  <div style="font-size:13px;font-weight:600;color:#1e293b">{{ $payLabel }} — ₱{{ number_format($pay->amount_due, 2) }}</div>
+                  <div class="d-flex align-items-center gap-2">
+                    <div style="font-size:13px;font-weight:600;color:#1e293b">{{ $payLabel }} — ₱{{ number_format($pay->amount_due, 2) }}</div>
+                    <button type="button" class="btn btn-link btn-sm p-0" style="font-size:11px" onclick="openAdjustAmountModal({{ $pay->id }}, '{{ addslashes($payLabel) }}', {{ $pay->amount_due }})" title="Correct the billed amount">
+                      <i class="bi bi-pencil-square"></i> Adjust
+                    </button>
+                  </div>
                   @if($pay->installment_number > 0)
                   <div class="text-muted mt-1" style="font-size:11.5px">Due {{ $pay->due_date->format('M j, Y') }}</div>
-                  @endif
-                  @if($pay->payment_method)
-                  <div class="text-muted mt-1" style="font-size:11.5px">
-                    <i class="bi bi-credit-card me-1"></i>{{ $payMethodLabels[$pay->payment_method] ?? $pay->payment_method }}
-                    @if($pay->submitted_at) &bull; Submitted {{ $pay->submitted_at->format('M j, Y g:i A') }} @endif
-                    @if($pay->paid_at) &bull; Verified {{ $pay->paid_at->format('M j, Y g:i A') }} @endif
-                  </div>
                   @endif
                   <div class="mt-1">
                     @if($pay->status === 'paid')
                       <span class="badge-approved">Paid</span>
-                    @elseif($pay->status === 'pending')
-                      <span class="badge-pending">Pending Verification</span>
+                    @elseif($pay->status === 'partial')
+                      <span class="badge rounded-pill px-2" style="background:#e0f2fe;color:#0369a1;font-size:11px">Partially Paid</span>
                     @else
                       <span class="badge rounded-pill px-2" style="background:#fef3c7;color:#b45309;font-size:11px">Unpaid</span>
                     @endif
+                    @if($proofsSorted->where('status', 'pending')->isNotEmpty())
+                      <span class="badge-pending ms-1">{{ $proofsSorted->where('status', 'pending')->count() }} Pending Review</span>
+                    @endif
                   </div>
-                  @if($pay->status === 'unpaid' && $pay->feedback)
-                  <div class="mt-2" style="font-size:12px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px">
-                    <i class="bi bi-exclamation-circle-fill me-1"></i>{{ $pay->feedback }}
-                  </div>
+                  @if($verifiedAmount > 0)
+                  <div class="text-muted mt-1" style="font-size:11.5px">₱{{ number_format($verifiedAmount, 2) }} verified &bull; ₱{{ number_format($remaining, 2) }} remaining</div>
                   @endif
                 </div>
-                <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                  @if($pay->proof_of_payment)
-                  <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:12px" onclick="showImagePreview('{{ asset('storage/' . $pay->proof_of_payment) }}', '{{ addslashes($payLabel) }} — Proof of Payment')"><i class="bi bi-eye me-1"></i>View Proof</button>
-                  @endif
-                  @if($pay->status === 'pending')
-                  <button type="button" class="btn btn-success btn-sm" style="font-size:12px" onclick="verifyTuitionPayment({{ $pay->id }})">
-                    <i class="bi bi-check-lg me-1"></i>Verify
-                  </button>
-                  <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:12px" onclick="openResubmitModal({{ $pay->id }}, '{{ $payLabel }}', true)">
-                    <i class="bi bi-arrow-repeat me-1"></i>Reject
-                  </button>
-                  @endif
+
+                @if($proofsSorted->isNotEmpty())
+                <div class="d-flex flex-column gap-2 mt-1">
+                  @foreach($proofsSorted as $proof)
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-2 rounded-3" style="background:#fff;border:1px solid #e2e8f0">
+                    <div style="min-width:0;flex:1">
+                      <div style="font-size:12.5px;font-weight:600;color:#1e293b">₱{{ number_format($proof->amount, 2) }}</div>
+                      <div class="text-muted mt-1" style="font-size:11px">
+                        <i class="bi bi-credit-card me-1"></i>{{ $payMethodLabels[$proof->payment_method] ?? $proof->payment_method }}
+                        &bull; Submitted {{ $proof->submitted_at->format('M j, Y g:i A') }}
+                        @if($proof->verified_at) &bull; Verified {{ $proof->verified_at->format('M j, Y g:i A') }} @endif
+                      </div>
+                      @if($proof->status === 'rejected' && $proof->feedback)
+                      <div class="mt-2" style="font-size:11.5px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:6px 8px">
+                        <i class="bi bi-exclamation-circle-fill me-1"></i>{{ $proof->feedback }}
+                      </div>
+                      @endif
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                      @if($proof->status === 'verified')
+                        <span class="badge-approved">Verified</span>
+                      @elseif($proof->status === 'rejected')
+                        <span class="badge rounded-pill px-2" style="background:#fee2e2;color:#991b1b;font-size:11px">Rejected</span>
+                      @endif
+                      <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:11.5px" onclick="showImagePreview('{{ asset('storage/' . $proof->proof_of_payment) }}', '{{ addslashes($payLabel) }} — ₱{{ number_format($proof->amount, 2) }}')"><i class="bi bi-eye me-1"></i>View</button>
+                      @if($proof->status === 'pending')
+                      <button type="button" class="btn btn-success btn-sm" style="font-size:11.5px" onclick="openVerifyProofModal({{ $proof->id }}, '{{ addslashes($payLabel) }}', {{ $proof->amount }})">
+                        <i class="bi bi-check-lg me-1"></i>Verify
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:11.5px" onclick="openResubmitModal({{ $proof->id }}, '{{ $payLabel }} (₱{{ number_format($proof->amount, 2) }})', true)">
+                        <i class="bi bi-arrow-repeat me-1"></i>Reject
+                      </button>
+                      @endif
+                    </div>
+                  </div>
+                  @endforeach
                 </div>
+                @endif
               </div>
               @endforeach
             </div>
@@ -1407,9 +1546,16 @@ body { margin:0; background:#f1f5f9; }
 
       <div class="modal-footer border-0" style="background:#f8fafc;padding:14px 24px">
         @if($p->status === 'pending')
+        @if($pAllRequiredApproved)
         <button type="button" class="btn btn-success btn-sm fw-semibold px-3" onclick="approveApplication({{ $p->id }}, '{{ addslashes($p->first_name . ' ' . $p->last_name) }}')">
           <i class="bi bi-check-circle me-1"></i>Approve
         </button>
+        @else
+        <button type="button" class="btn btn-success btn-sm fw-semibold px-3" disabled title="All required documents must be verified before approving.">
+          <i class="bi bi-check-circle me-1"></i>Approve
+        </button>
+        <span class="text-muted align-self-center" style="font-size:11.5px">Verify all required documents first</span>
+        @endif
         @endif
         <a href="{{ $closeHref }}" class="btn btn-light btn-sm border px-4 fw-medium"><i class="bi bi-x me-1"></i>Close</a>
       </div>
@@ -1750,6 +1896,30 @@ function showImagePreview(url, title) {
   });
 })();
 
+// Same stacking fix as imagePreviewModal above — verifyProofModal and
+// adjustAmountModal are both opened from buttons inside the profile modal
+// (see the Tuition Payments section), so without this they render behind
+// the profile modal's backdrop: visually just a darkened screen with
+// nothing clickable on top.
+(function () {
+  ['verifyProofModal', 'adjustAmountModal'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('shown.bs.modal', function () {
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      if (backdrops.length > 1) {
+        backdrops[backdrops.length - 1].style.zIndex = 1070;
+        el.style.zIndex = 1080;
+      }
+    });
+    el.addEventListener('hidden.bs.modal', function () {
+      if (document.querySelectorAll('.modal.show').length) {
+        document.body.classList.add('modal-open');
+      }
+    });
+  });
+})();
+
 const NOTIF_METHOD_LABELS = { gcash: 'GCash', maya: 'Maya', bank_transfer: 'Bank Transfer', cash: 'Cash' };
 
 function openNotification(id) {
@@ -1769,14 +1939,16 @@ function openNotification(id) {
 }
 
 let _notifModalPaymentId = null;
+let _notifModalAmountDue = 0;
 
 function showPaymentNotifModal(data) {
   _notifModalPaymentId = data.payment_id;
+  _notifModalAmountDue = Number(data.amount_due || 0);
 
   document.getElementById('notifModalStudent').textContent = data.student_name || '—';
   document.getElementById('notifModalParent').textContent = data.parent_name || '—';
   document.getElementById('notifModalLabel').textContent = data.label || '—';
-  document.getElementById('notifModalAmount').textContent = '₱' + Number(data.amount_due || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
+  document.getElementById('notifModalAmount').textContent = '₱' + _notifModalAmountDue.toLocaleString('en-PH', { minimumFractionDigits: 2 });
   document.getElementById('notifModalMethod').textContent = NOTIF_METHOD_LABELS[data.payment_method] || data.payment_method || '—';
   document.getElementById('notifModalSubmitted').textContent = data.submitted_at || '—';
 
@@ -1798,7 +1970,8 @@ function showPaymentNotifModal(data) {
 function verifyFromNotifModal() {
   if (!_notifModalPaymentId) return;
   bsModal('notifDetailModal').hide();
-  verifyTuitionPayment(_notifModalPaymentId);
+  const label = document.getElementById('notifModalLabel').textContent;
+  openVerifyProofModal(_notifModalPaymentId, label, _notifModalAmountDue);
 }
 
 function rejectFromNotifModal() {
@@ -1920,7 +2093,7 @@ function submitResubmitFlag() {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending…';
 
   const url = _resubmitIsTuition
-    ? `/admin/tuition/payments/${_resubmitDocId}/reject`
+    ? `/admin/tuition/proofs/${_resubmitDocId}/reject`
     : `/admin/requirements/${_resubmitDocId}/flag-resubmit`;
   const method = _resubmitIsTuition ? 'POST' : 'PATCH';
 
@@ -1938,6 +2111,15 @@ function submitResubmitFlag() {
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-send me-1"></i>Notify Parent';
     });
+}
+
+function verifyRequirementDoc(requirementId) {
+  apiFetch(`/admin/requirements/${requirementId}/verify`, 'PATCH')
+    .then(() => {
+      phlciToast('Document verified.', 'success');
+      setTimeout(() => location.reload(), 600);
+    })
+    .catch(() => phlciToast('Could not verify this document. Please try again.', 'error'));
 }
 
 function approveApplication(enrollmentId, name) {
@@ -1989,13 +2171,86 @@ function bulkApproveSelected() {
     });
 }
 
-function verifyTuitionPayment(paymentId) {
-  apiFetch(`/admin/tuition/payments/${paymentId}/verify`, 'POST')
+let _verifyProofId = null;
+
+function openVerifyProofModal(proofId, label, claimedAmount) {
+  _verifyProofId = proofId;
+  document.getElementById('verifyProofLabel').textContent = label;
+  document.getElementById('verifyProofAmount').value = Number(claimedAmount).toFixed(2);
+  document.getElementById('verifyProofError').classList.add('d-none');
+  bsModal('verifyProofModal').show();
+}
+
+function confirmVerifyProof() {
+  const errorEl = document.getElementById('verifyProofError');
+  const amount = parseFloat(document.getElementById('verifyProofAmount').value);
+
+  if (!amount || amount <= 0) {
+    errorEl.textContent = 'Please enter a valid amount.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+
+  const btn = document.getElementById('verifyProofSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Verifying…';
+
+  apiFetch(`/admin/tuition/proofs/${_verifyProofId}/verify`, 'POST', { amount })
     .then(() => {
+      bsModal('verifyProofModal').hide();
       phlciToast('Payment marked as paid.', 'success');
       setTimeout(() => location.reload(), 600);
     })
-    .catch(() => phlciToast('Could not verify this payment. Please try again.', 'error'));
+    .catch(() => {
+      errorEl.textContent = 'Could not verify this payment. Please check the amount and try again.';
+      errorEl.classList.remove('d-none');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Verify';
+    });
+}
+
+let _adjustAmountPaymentId = null;
+
+function openAdjustAmountModal(paymentId, label, currentAmount) {
+  _adjustAmountPaymentId = paymentId;
+  document.getElementById('adjustAmountLabel').textContent = label;
+  document.getElementById('adjustAmountValue').value = Number(currentAmount).toFixed(2);
+  document.getElementById('adjustAmountReason').value = '';
+  document.getElementById('adjustAmountError').classList.add('d-none');
+  bsModal('adjustAmountModal').show();
+}
+
+function confirmAdjustAmount() {
+  const errorEl = document.getElementById('adjustAmountError');
+  const amount_due = parseFloat(document.getElementById('adjustAmountValue').value);
+  const reason = document.getElementById('adjustAmountReason').value.trim();
+
+  if (isNaN(amount_due) || amount_due < 0) {
+    errorEl.textContent = 'Please enter a valid amount.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+
+  const btn = document.getElementById('adjustAmountSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+
+  apiFetch(`/admin/tuition/payments/${_adjustAmountPaymentId}/adjust-amount`, 'PATCH', { amount_due, reason })
+    .then(() => {
+      bsModal('adjustAmountModal').hide();
+      phlciToast('Installment amount updated.', 'success');
+      setTimeout(() => location.reload(), 600);
+    })
+    .catch(() => {
+      errorEl.textContent = 'Could not update this amount. Please try again.';
+      errorEl.classList.remove('d-none');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Save';
+    });
 }
 
 /* ── Profile: modern photo upload (drag-drop + live preview) ── */

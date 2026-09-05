@@ -6,12 +6,21 @@
 <script>
 var tuitionPaymentBeingSubmitted = null; // payment id currently open in the modal
 var tuitionPaneIndexBeingSubmitted = null; // which child pane to refresh after submit
+var tuitionRemainingBeingSubmitted = 0; // remaining balance on that installment, caps the amount input
 
+// Overall installment status — now unpaid / partial / paid, since one
+// installment can hold several proofs and isn't "pending" as a whole.
 var TUITION_STATUS_BADGE = {
-  paid:            '<span class="badge bg-success-subtle text-success px-3 py-1 rounded-pill">Paid</span>',
-  pending:         '<span class="badge bg-warning-subtle text-warning px-3 py-1 rounded-pill">Pending Verification</span>',
-  unpaid:          '<span class="badge bg-secondary-subtle text-secondary px-3 py-1 rounded-pill">Unpaid</span>',
-  needs_resubmit:  '<span class="badge bg-danger-subtle text-danger px-3 py-1 rounded-pill">Needs Resubmission</span>',
+  paid:    '<span class="badge bg-success-subtle text-success px-3 py-1 rounded-pill">Paid</span>',
+  partial: '<span class="badge bg-info-subtle text-info px-3 py-1 rounded-pill">Partially Paid</span>',
+  unpaid:  '<span class="badge bg-secondary-subtle text-secondary px-3 py-1 rounded-pill">Unpaid</span>',
+};
+
+// Status of one individual proof submission.
+var PROOF_STATUS_BADGE = {
+  pending:  '<span class="badge bg-warning-subtle text-warning px-2 py-1 rounded-pill">Pending Verification</span>',
+  verified: '<span class="badge bg-success-subtle text-success px-2 py-1 rounded-pill">Verified</span>',
+  rejected: '<span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill">Rejected</span>',
 };
 
 function installmentLabel(p) {
@@ -71,22 +80,45 @@ function renderTuitionPane(data, index) {
   html += '  <div class="d-flex flex-column">';
 
   data.payments.forEach(function (p) {
-    html += '<div class="d-flex align-items-center justify-content-between p-3 border-bottom flex-wrap gap-2">';
-    html += '  <div>';
-    html += '    <div class="fw-medium" style="font-size:13.5px;color:#1e293b">' + installmentLabel(p) + '</div>';
-    html += '    <div class="text-muted" style="font-size:11.5px">Due ' + p.due_date + ' · ₱' + Number(p.amount_due).toLocaleString(undefined, {minimumFractionDigits:2}) + '</div>';
-    if (p.status === 'needs_resubmit' && p.feedback) {
-      html += '    <div class="text-danger mt-1" style="font-size:11px"><i class="bi bi-exclamation-circle me-1"></i>' + p.feedback + '</div>';
+    html += '<div class="p-3 border-bottom">';
+    html += '  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">';
+    html += '    <div>';
+    html += '      <div class="fw-medium" style="font-size:13.5px;color:#1e293b">' + installmentLabel(p) + '</div>';
+    html += '      <div class="text-muted" style="font-size:11.5px">Due ' + p.due_date + ' · ₱' + Number(p.amount_due).toLocaleString(undefined, {minimumFractionDigits:2}) + '</div>';
+    if (p.verified_amount > 0) {
+      html += '      <div class="text-muted mt-1" style="font-size:11px">₱' + Number(p.verified_amount).toLocaleString(undefined, {minimumFractionDigits:2}) + ' verified &bull; ₱' + Number(p.remaining_balance).toLocaleString(undefined, {minimumFractionDigits:2}) + ' remaining</div>';
     }
-    html += '  </div>';
-    html += '  <div class="d-flex align-items-center gap-2">';
+    html += '    </div>';
+    html += '    <div class="d-flex align-items-center gap-2">';
     html += TUITION_STATUS_BADGE[p.status] || '';
     if (p.can_submit_proof) {
-      html += '<button type="button" class="btn btn-sm btn-navy fw-semibold" style="font-size:12px" onclick="openSubmitPaymentModal(' + p.id + ', \'' + installmentLabel(p).replace(/'/g, "\\'") + '\', ' + index + ')"><i class="bi bi-upload me-1"></i>Pay Now</button>';
-    } else if (p.proof_of_payment) {
-      html += '<button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:12px" onclick="viewDocument(\'' + p.proof_of_payment + '\', \'' + installmentLabel(p).replace(/'/g, "\\'") + '\')"><i class="bi bi-eye me-1"></i>View</button>';
+      html += '<button type="button" class="btn btn-sm btn-navy fw-semibold" style="font-size:12px" onclick="openSubmitPaymentModal(' + p.id + ', \'' + installmentLabel(p).replace(/'/g, "\\'") + '\', ' + index + ', ' + p.remaining_balance + ')"><i class="bi bi-upload me-1"></i>Pay Now</button>';
     }
+    html += '    </div>';
     html += '  </div>';
+
+    // Every proof submitted for this installment so far — a parent may
+    // have sent several partial payments against the same due amount.
+    if (p.proofs && p.proofs.length) {
+      html += '  <div class="d-flex flex-column gap-2 mt-2">';
+      p.proofs.forEach(function (proof) {
+        html += '<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-2 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0">';
+        html += '  <div>';
+        html += '    <div class="fw-medium" style="font-size:12.5px;color:#1e293b">₱' + Number(proof.amount).toLocaleString(undefined, {minimumFractionDigits:2}) + '</div>';
+        html += '    <div class="text-muted" style="font-size:11px">' + (proof.payment_method || '') + ' &bull; Submitted ' + proof.submitted_at + (proof.verified_at ? ' &bull; Verified ' + proof.verified_at : '') + '</div>';
+        if (proof.status === 'rejected' && proof.feedback) {
+          html += '    <div class="text-danger mt-1" style="font-size:11px"><i class="bi bi-exclamation-circle me-1"></i>' + proof.feedback + '</div>';
+        }
+        html += '  </div>';
+        html += '  <div class="d-flex align-items-center gap-2">';
+        html += PROOF_STATUS_BADGE[proof.status] || '';
+        html += '<button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:11.5px" onclick="viewDocument(\'' + proof.proof_of_payment + '\', \'' + installmentLabel(p).replace(/'/g, "\\'") + '\')"><i class="bi bi-eye me-1"></i>View</button>';
+        html += '  </div>';
+        html += '</div>';
+      });
+      html += '  </div>';
+    }
+
     html += '</div>';
   });
 
@@ -110,11 +142,14 @@ function switchTuitionChild(index) {
   }
 }
 
-function openSubmitPaymentModal(paymentId, label, paneIndex) {
+function openSubmitPaymentModal(paymentId, label, paneIndex, remainingBalance) {
   tuitionPaymentBeingSubmitted = paymentId;
   tuitionPaneIndexBeingSubmitted = paneIndex;
+  tuitionRemainingBeingSubmitted = remainingBalance;
 
   document.getElementById('submitPaymentInstallmentLabel').textContent = 'Submitting payment for: ' + label;
+  document.getElementById('submitPaymentRemainingLabel').textContent =
+    '₱' + Number(remainingBalance).toLocaleString(undefined, {minimumFractionDigits:2}) + ' remaining on this installment — you can pay all of it now or send a partial amount.';
 
   // Reset modal state
   document.querySelectorAll('#submitPaymentMethodCards .pay-method-card').forEach(function (card) {
@@ -122,6 +157,9 @@ function openSubmitPaymentModal(paymentId, label, paneIndex) {
     card.style.background = '#fff';
     card.querySelector('input').checked = false;
   });
+  var amountInput = document.getElementById('submitPaymentAmount');
+  amountInput.value = remainingBalance;
+  amountInput.max = remainingBalance;
   document.getElementById('submitPaymentFile').value = '';
   document.getElementById('submitPaymentFileName').textContent = '';
   document.getElementById('submitPaymentError').classList.add('d-none');
@@ -154,9 +192,21 @@ function confirmSubmitPayment() {
 
   var methodInput = document.querySelector('input[name="submitPaymentMethod"]:checked');
   var fileInput = document.getElementById('submitPaymentFile');
+  var amountInput = document.getElementById('submitPaymentAmount');
+  var amount = parseFloat(amountInput.value);
 
   if (!methodInput) {
     errorEl.textContent = 'Please select a mode of payment.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+  if (!amount || amount <= 0) {
+    errorEl.textContent = 'Please enter how much you\'re paying.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+  if (amount > tuitionRemainingBeingSubmitted + 0.01) {
+    errorEl.textContent = 'That\'s more than the ₱' + Number(tuitionRemainingBeingSubmitted).toLocaleString(undefined, {minimumFractionDigits:2}) + ' remaining on this installment.';
     errorEl.classList.remove('d-none');
     return;
   }
@@ -178,6 +228,7 @@ function confirmSubmitPayment() {
 
   var formData = new FormData();
   formData.append('payment_method', methodInput.value);
+  formData.append('amount', amount);
   formData.append('file', fileInput.files[0]);
 
   fetch('{{ url("/tuition/payments") }}/' + tuitionPaymentBeingSubmitted + '/upload-proof', {
@@ -210,6 +261,7 @@ function confirmSubmitPayment() {
 
     tuitionPaymentBeingSubmitted = null;
     tuitionPaneIndexBeingSubmitted = null;
+    tuitionRemainingBeingSubmitted = 0;
   })
   .catch(function (err) {
     console.error('Payment submission failed:', err);
@@ -262,7 +314,8 @@ function renderTuitionHistory(rows) {
     html += '<td>' + (row.payment_method || '—') + '</td>';
     html += '<td>' + row.submitted_at + '</td>';
     html += '<td>' + (row.verified_at || '—') + '</td>';
-    html += '<td class="pe-3">' + (TUITION_STATUS_BADGE[row.status] || row.status) + '</td>';
+    // History rows are now individual proofs — pending/verified/rejected.
+    html += '<td class="pe-3">' + (PROOF_STATUS_BADGE[row.status] || row.status) + '</td>';
     html += '</tr>';
   });
 

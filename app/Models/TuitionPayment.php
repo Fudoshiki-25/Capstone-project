@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TuitionPayment extends Model
 {
@@ -38,5 +39,63 @@ class TuitionPayment extends Model
     public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
+     * Every proof ever submitted against this installment — supports
+     * partial payments (e.g. ₱950 now, ₱500 later, ₱500 after that).
+     */
+    public function proofs(): HasMany
+    {
+        return $this->hasMany(TuitionPaymentProof::class, 'tuition_payment_id');
+    }
+
+    /**
+     * Sum of admin-verified proofs' credited amounts (see
+     * TuitionPaymentProof::creditedAmount() — this is the parent's claimed
+     * amount unless an admin corrected it at verify-time). Rejected and
+     * still-pending proofs don't count until an admin verifies them.
+     */
+    public function verifiedAmount(): float
+    {
+        return (float) $this->proofs()
+            ->where('status', 'verified')
+            ->get()
+            ->sum(fn (TuitionPaymentProof $proof) => $proof->creditedAmount());
+    }
+
+    public function remainingBalance(): float
+    {
+        return max(0, (float) $this->amount_due - $this->verifiedAmount());
+    }
+
+    public function hasPendingProof(): bool
+    {
+        return $this->proofs()->where('status', 'pending')->exists();
+    }
+
+    /**
+     * Recomputes this installment's overall status from its proofs.
+     * Call after any proof is verified or rejected — never set 'paid'/
+     * 'partial' directly on the payment anymore, since a single field
+     * can no longer capture "some verified, some still pending".
+     */
+    public function refreshStatus(): void
+    {
+        $verified = $this->verifiedAmount();
+
+        if ($verified >= (float) $this->amount_due) {
+            $lastVerified = $this->proofs()->where('status', 'verified')->latest('verified_at')->first();
+
+            $this->update([
+                'status'   => 'paid',
+                'paid_at'  => $lastVerified?->verified_at ?? now(),
+                'feedback' => null,
+            ]);
+        } elseif ($verified > 0) {
+            $this->update(['status' => 'partial', 'paid_at' => null]);
+        } else {
+            $this->update(['status' => 'unpaid', 'paid_at' => null]);
+        }
     }
 }

@@ -522,6 +522,15 @@ class EnrollmentController extends Controller
                 ]);
             }
 
+        // Approving the application implies the submitted documents were
+        // reviewed too — otherwise every requirement stays stuck on
+        // "Pending Review" forever, since nothing else ever sets a
+        // requirement to 'approved'. Leaves 'needs_resubmit' docs alone
+        // rather than silently clearing a flag the admin deliberately set.
+        $enrollment->requirements()
+            ->whereNotIn('status', ['approved', 'needs_resubmit'])
+            ->update(['status' => 'approved', 'reviewed_at' => now()]);
+
         \App\Models\ActivityLog::record(
             $request->user(),
             'Approved Application',
@@ -585,6 +594,13 @@ class EnrollmentController extends Controller
                         'verified_by' => $request->user()->id,
                     ]);
                 }
+
+                // Same auto-approval as the single approve() path — a
+                // bulk-approved batch shouldn't leave its documents stuck
+                // on "Pending Review" either.
+                $enrollment->requirements()
+                    ->whereNotIn('status', ['approved', 'needs_resubmit'])
+                    ->update(['status' => 'approved', 'reviewed_at' => now()]);
 
                 SafeNotify::to($enrollment->user, new EnrollmentApproved($enrollment));
                     $approvedNames[] = $name;

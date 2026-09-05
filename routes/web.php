@@ -84,6 +84,7 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
     Route::post('/admin/profile/photo', [ProfileController::class, 'uploadPhoto'])->name('admin.profile.photo');
     Route::delete('/admin/profile/photo', [ProfileController::class, 'removePhoto'])->name('admin.profile.photo.remove');
     Route::put('/admin/profile/password', [ProfileController::class, 'updatePassword'])->name('admin.profile.password');
+    Route::patch('/admin/requirements/{requirement}/verify', [RequirementsController::class, 'verify'])->name('admin.requirements.verify');
     Route::patch('/admin/requirements/{requirement}/flag-resubmit', [RequirementsController::class, 'flagResubmit'])->name('admin.requirements.flagResubmit');
 
     // Applications
@@ -101,9 +102,14 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
     Route::get('/admin/students/export', [EnrollmentController::class, 'export'])->name('admin.students.export');
     Route::post('/admin/students', [EnrollmentController::class, 'adminStore'])->name('admin.students.store');
 
-    // Tuition verification
-    Route::post('/admin/tuition/payments/{payment}/verify', [TuitionController::class, 'verify'])->name('admin.tuition.verify');
-    Route::post('/admin/tuition/payments/{payment}/reject', [TuitionController::class, 'reject'])->name('admin.tuition.reject');
+    // Tuition verification — acts on a specific proof submission, since one
+    // installment can now hold several partial proofs.
+    Route::post('/admin/tuition/proofs/{proof}/verify', [TuitionController::class, 'verifyProof'])->name('admin.tuition.verify');
+    Route::post('/admin/tuition/proofs/{proof}/reject', [TuitionController::class, 'rejectProof'])->name('admin.tuition.reject');
+
+    // Direct balance override — corrects an installment's billed amount
+    // itself, independent of any proof (data-entry fix, discount, waiver).
+    Route::patch('/admin/tuition/payments/{payment}/adjust-amount', [TuitionController::class, 'adjustAmount'])->name('admin.tuition.adjustAmount');
 });
 
 // ── SUPERADMIN ROUTES — protected by web guard, superadmin role only ─────────

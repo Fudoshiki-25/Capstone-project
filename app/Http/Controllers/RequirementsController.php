@@ -118,6 +118,41 @@ class RequirementsController extends Controller
     }
 
     /**
+     * PATCH /admin/requirements/{requirement}/verify
+     * Admin confirms a specific submitted document is acceptable. Required
+     * before an application can be approved — see the disabled Approve
+     * button in admin.blade.php, which checks every required document is
+     * 'approved' first (EnrollmentController::requiredDocumentTypes()).
+     */
+    public function verify(Request $request, EnrollmentRequirement $requirement)
+    {
+        if (! $request->user()->canManageGrade($requirement->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
+        if (in_array($requirement->enrollment->status, ['approved', 'enrolled'])) {
+            abort(403, 'This application has already been validated.');
+        }
+
+        if ($requirement->status !== 'pending') {
+            return response()->json([
+                'message' => 'Only a submitted (pending) document can be verified.',
+            ], 422);
+        }
+
+        $requirement->update([
+            'status'      => 'approved',
+            'feedback'    => null,
+            'reviewed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document verified.',
+        ]);
+    }
+
+    /**
      * PATCH /admin/requirements/{requirement}/flag-resubmit
      * Admin flags a specific uploaded document (e.g. a blurry photo) so the
      * parent is prompted to re-upload it, with a note on what was wrong.
