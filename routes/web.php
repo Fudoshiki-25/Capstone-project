@@ -110,6 +110,12 @@ Route::middleware(['auth:web', 'role:admin'])->group(function () {
     // Direct balance override — corrects an installment's billed amount
     // itself, independent of any proof (data-entry fix, discount, waiver).
     Route::patch('/admin/tuition/payments/{payment}/adjust-amount', [TuitionController::class, 'adjustAmount'])->name('admin.tuition.adjustAmount');
+
+    // Plan-level override — corrects the overall tuition total for a
+    // student (e.g. wrong grade fee at enrollment, a scholarship granted
+    // after the fact). Redistributes the change across installments that
+    // don't yet have any payment submitted against them.
+    Route::patch('/admin/tuition/plans/{plan}/adjust-total', [TuitionController::class, 'adjustPlanTotal'])->name('admin.tuition.adjustTotal');
 });
 
 // ── SUPERADMIN ROUTES — protected by web guard, superadmin role only ─────────

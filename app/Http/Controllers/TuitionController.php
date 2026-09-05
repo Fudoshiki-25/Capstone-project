@@ -6,6 +6,7 @@ use App\Models\GradeTuitionFee;
 use App\Models\StudentEnrollment;
 use App\Models\TuitionPayment;
 use App\Models\TuitionPaymentProof;
+use App\Models\TuitionPlan;
 use App\Support\ImageUploadStorer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -392,6 +393,101 @@ class TuitionController extends Controller
             'installment_status' => $payment->fresh()->status,
             'verified_amount'    => $payment->verifiedAmount(),
             'remaining_balance'  => $payment->remainingBalance(),
+        ]);
+    }
+
+    /**
+     * PATCH /admin/tuition/plans/{plan}/adjust-total
+     * Corrects the overall tuition total for this plan (e.g. the grade fee
+     * was wrong at enrollment time, or a scholarship/discount is granted
+     * partway through the year) and cascades that change across the
+     * installment schedule — same idea as adjustAmount() above, but for
+     * the plan as a whole instead of one installment at a time.
+     *
+     * The down payment and any installment that already has a proof
+     * submitted against it (status 'partial' or 'paid') are left exactly
+     * as they are — those represent money already claimed or verified, and
+     * changing them is what adjustAmount()/verifyProof() are for. Only
+     * installments still fully 'unpaid' absorb the new total, split evenly
+     * across them the same way the original schedule was generated (see
+     * TuitionPlan::generateForEnrollment), with the last one absorbing any
+     * rounding remainder so the numbers always add up exactly.
+     */
+    public function adjustPlanTotal(Request $request, TuitionPlan $plan)
+    {
+        if (! $request->user()->canManageGrade($plan->enrollment->grade_level)) {
+            abort(403, 'You are not assigned to manage this student\'s grade level.');
+        }
+
+        $request->validate([
+            'total_amount' => 'required|numeric|min:0',
+            'reason'       => 'nullable|string|max:255',
+        ]);
+
+        $oldTotal = (float) $plan->total_amount;
+        $newTotal = round((float) $request->input('total_amount'), 2);
+        $downPayment = (float) $plan->down_payment;
+
+        $installments = $plan->payments()->where('installment_number', '>', 0)->orderBy('installment_number')->get();
+        $lockedInstallments = $installments->where('status', '!=', 'unpaid');
+        $unpaidInstallments = $installments->where('status', 'unpaid')->values();
+
+        $lockedSum = (float) $lockedInstallments->sum(fn ($p) => (float) $p->amount_due);
+        // What's left to spread across the still-untouched installments,
+        // once the down payment and any already-in-progress installment
+        // are accounted for.
+        $pool = round($newTotal - $downPayment - $lockedSum, 2);
+
+        if ($unpaidInstallments->isEmpty()) {
+            // Nothing left to redistribute into — every installment already
+            // has a payment submitted or verified, so the new total can
+            // only be honored if it already matches what's billed.
+            if (abs($pool) > 0.01) {
+                return response()->json([
+                    'message' => 'Every installment already has a payment submitted or verified against it, so the total can\'t be redistributed automatically. Adjust the individual installments instead.',
+                ], 422);
+            }
+        } elseif ($pool < 0) {
+            return response()->json([
+                'message' => 'That total is lower than what\'s already billed on the down payment and installments with a payment submitted (₱'
+                    . number_format($downPayment + $lockedSum, 2) . '). Adjust those installments individually first if this is meant to be a discount.',
+            ], 422);
+        } else {
+            $count = $unpaidInstallments->count();
+            $base = round($pool / $count, 2);
+            $running = 0;
+
+            foreach ($unpaidInstallments as $i => $installment) {
+                $isLast = $i === $count - 1;
+                $amount = $isLast ? round($pool - $running, 2) : $base;
+                $running += $amount;
+                $installment->update(['amount_due' => $amount]);
+            }
+        }
+
+        $plan->update(['total_amount' => $newTotal]);
+
+        // An installment's amount_due may have just moved past or below
+        // what's already verified against it, so recheck every installment's
+        // paid/partial/unpaid status against the new numbers.
+        foreach ($installments as $installment) {
+            $installment->refreshStatus();
+        }
+
+        $studentName = trim($plan->enrollment->first_name . ' ' . $plan->enrollment->last_name);
+        $reasonSuffix = $request->filled('reason') ? ' — ' . $request->input('reason') : '';
+
+        \App\Models\ActivityLog::record(
+            $request->user(),
+            'Adjusted Tuition Total',
+            $studentName . ' (₱' . number_format($oldTotal, 2) . ' → ₱' . number_format($newTotal, 2) . ')' . $reasonSuffix,
+            'warning'
+        );
+
+        return response()->json([
+            'success'      => true,
+            'message'      => 'Tuition total updated.',
+            'total_amount' => $newTotal,
         ]);
     }
 

@@ -19,16 +19,57 @@
       @else
         <div style="max-width:900px">
           @if($approvedChildren->count() > 1)
-          <div class="d-flex align-items-center gap-3 mb-4 p-3 rounded-3 bg-white border" style="max-width:420px">
-            <label class="fw-semibold flex-shrink-0" style="font-size:13px;color:#374151">
-              <i class="bi bi-person-fill me-1" style="color:#1a2a5e"></i>Select Child:
-            </label>
-            <select class="form-select form-select-sm border-0" id="tuitionChildSelector" onchange="switchTuitionChild(this.value)" style="font-size:13px;background:transparent">
+          <style>
+            .child-switch-btn {
+              display:flex; align-items:center; gap:12px;
+              padding:12px 18px; border-radius:14px;
+              border:2px solid #e2e8f0; background:#fff; cursor:pointer;
+              transition:all .15s ease; text-align:left; min-width:220px;
+            }
+            .child-switch-btn:hover { border-color:#94a3b8; box-shadow:0 2px 10px rgba(15,23,42,.08); transform:translateY(-1px); }
+            .child-switch-btn.active { border-color:#1a2a5e; background:#eef1fb; box-shadow:0 2px 12px rgba(26,42,94,.15); }
+            .child-switch-avatar {
+              width:42px; height:42px; border-radius:50%; flex-shrink:0;
+              background:#1a2a5e; color:#fff; display:flex; align-items:center; justify-content:center;
+              font-size:15px; font-weight:700;
+            }
+            .child-switch-btn.active .child-switch-avatar { background:#fbbf24; color:#1a2a5e; }
+            .child-switch-text { display:flex; flex-direction:column; flex:1; min-width:0; }
+            .child-switch-name { font-size:14.5px; font-weight:700; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+            .child-switch-grade { font-size:12px; color:#64748b; margin-top:1px; }
+            .child-switch-check { font-size:20px; color:#1a2a5e; flex-shrink:0; visibility:hidden; }
+            .child-switch-btn.active .child-switch-check { visibility:visible; }
+          </style>
+          <div class="mb-4">
+            <div class="fw-semibold mb-2" style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em">
+              <i class="bi bi-people-fill me-1"></i>Viewing tuition for — tap to switch child
+            </div>
+            <div class="d-flex flex-wrap gap-2" id="tuitionChildSwitcher">
               @foreach($approvedChildren as $i => $child)
-              <option value="{{ $i }}">{{ $child->first_name }} {{ $child->last_name }} ({{ $child->grade_level }})</option>
+              @php $initials = strtoupper(substr($child->first_name, 0, 1) . substr($child->last_name, 0, 1)); @endphp
+              <button type="button" class="child-switch-btn {{ $i === 0 ? 'active' : '' }}" data-index="{{ $i }}" onclick="selectTuitionChild(this, {{ $i }})">
+                <span class="child-switch-avatar">{{ $initials }}</span>
+                <span class="child-switch-text">
+                  <span class="child-switch-name">{{ $child->first_name }} {{ $child->last_name }}</span>
+                  <span class="child-switch-grade">{{ $child->grade_level }}</span>
+                </span>
+                <i class="bi bi-check-circle-fill child-switch-check"></i>
+              </button>
               @endforeach
-            </select>
+            </div>
           </div>
+          <script>
+            // Keeps the existing switchTuitionChild(index) contract (it still
+            // loads/shows the right pane) — this just swaps which button in
+            // the row looks "pressed" so it's obvious which child is active.
+            function selectTuitionChild(btn, index) {
+              document.querySelectorAll('#tuitionChildSwitcher .child-switch-btn').forEach(function (b) {
+                b.classList.remove('active');
+              });
+              btn.classList.add('active');
+              switchTuitionChild(index);
+            }
+          </script>
           @endif
 
           @foreach($approvedChildren as $i => $child)

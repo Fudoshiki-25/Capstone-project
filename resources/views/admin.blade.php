@@ -1175,6 +1175,40 @@ body { margin:0; background:#f1f5f9; }
   </div>
 </div>
 
+<div class="modal fade" id="adjustTotalModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" style="color:#1e293b"><i class="bi bi-pencil-square me-2" style="color:#0369a1"></i>Edit Total Tuition</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label fw-medium" style="font-size:12.5px">New total tuition</label>
+          <div class="input-group">
+            <span class="input-group-text">₱</span>
+            <input type="number" step="0.01" min="0" class="form-control" id="adjustTotalValue">
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-medium" style="font-size:12.5px">Reason <span class="text-muted fw-normal">(optional, kept in the activity log)</span></label>
+          <input type="text" class="form-control" id="adjustTotalReason" placeholder="e.g. Wrong grade fee applied at enrollment, scholarship granted">
+        </div>
+        <div class="text-muted mt-2" style="font-size:11px">
+          The down payment and any installment that already has a payment submitted or verified stay exactly as they are. The difference is spread evenly across the installments that are still fully unpaid.
+        </div>
+        <div id="adjustTotalError" class="text-danger d-none mt-2" style="font-size:12px"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-navy btn-sm fw-semibold" id="adjustTotalSubmitBtn" onclick="confirmAdjustTotal()">
+          <i class="bi bi-check-lg me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ MODAL: IMAGE PREVIEW (requirements / payment proofs) ═══ -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1443,6 +1477,9 @@ body { margin:0; background:#f1f5f9; }
               <div style="width:28px;height:28px;border-radius:8px;background:#0369a1;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"><i class="bi bi-cash-coin"></i></div>
               <span style="font-size:13px;font-weight:700;color:#1e293b">Tuition Payments</span>
               <span class="text-muted" style="font-size:12px;margin-left:auto">{{ ucfirst($p->tuitionPlan->plan_type) }} Plan &bull; ₱{{ number_format($p->tuitionPlan->total_amount, 2) }} total</span>
+              <button type="button" class="btn btn-link btn-sm p-0" style="font-size:11px" onclick="openAdjustTotalModal({{ $p->tuitionPlan->id }}, {{ $p->tuitionPlan->total_amount }})" title="Correct the overall tuition total">
+                <i class="bi bi-pencil-square"></i> Edit
+              </button>
             </div>
             <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
               @foreach($p->tuitionPlan->payments->sortBy('installment_number') as $pay)
@@ -1902,7 +1939,7 @@ function showImagePreview(url, title) {
 // the profile modal's backdrop: visually just a darkened screen with
 // nothing clickable on top.
 (function () {
-  ['verifyProofModal', 'adjustAmountModal'].forEach(function (id) {
+  ['verifyProofModal', 'adjustAmountModal', 'adjustTotalModal'].forEach(function (id) {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('shown.bs.modal', function () {
@@ -2245,6 +2282,50 @@ function confirmAdjustAmount() {
     })
     .catch(() => {
       errorEl.textContent = 'Could not update this amount. Please try again.';
+      errorEl.classList.remove('d-none');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Save';
+    });
+}
+
+let _adjustTotalPlanId = null;
+
+function openAdjustTotalModal(planId, currentTotal) {
+  _adjustTotalPlanId = planId;
+  document.getElementById('adjustTotalValue').value = Number(currentTotal).toFixed(2);
+  document.getElementById('adjustTotalReason').value = '';
+  document.getElementById('adjustTotalError').classList.add('d-none');
+  bsModal('adjustTotalModal').show();
+}
+
+function confirmAdjustTotal() {
+  const errorEl = document.getElementById('adjustTotalError');
+  const total_amount = parseFloat(document.getElementById('adjustTotalValue').value);
+  const reason = document.getElementById('adjustTotalReason').value.trim();
+
+  if (isNaN(total_amount) || total_amount < 0) {
+    errorEl.textContent = 'Please enter a valid amount.';
+    errorEl.classList.remove('d-none');
+    return;
+  }
+
+  const btn = document.getElementById('adjustTotalSubmitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+  errorEl.classList.add('d-none');
+
+  apiFetch(`/admin/tuition/plans/${_adjustTotalPlanId}/adjust-total`, 'PATCH', { total_amount, reason })
+    .then(() => {
+      bsModal('adjustTotalModal').hide();
+      phlciToast('Tuition total updated.', 'success');
+      setTimeout(() => location.reload(), 600);
+    })
+    .catch((err) => {
+      let message = 'Could not update the total. Please try again.';
+      try { message = JSON.parse(err.message).message || message; } catch (e) {}
+      errorEl.textContent = message;
       errorEl.classList.remove('d-none');
     })
     .finally(() => {
